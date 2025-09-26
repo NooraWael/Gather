@@ -16,6 +16,8 @@ create table events (
   capacity int not null,
   is_paid boolean default false,
   image_url text,
+  category text,
+  phone_number text,
   status text check (status in ('pending', 'active', 'rejected')) default 'pending',
   created_by uuid references users(id) on delete cascade,
   created_at timestamp with time zone default now()
