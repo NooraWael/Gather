@@ -10,6 +10,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
+import { useAuthCheck } from '@/hooks/useAuth';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -34,18 +35,21 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
 
+  // Auth check hook
+  const { isLoading: authLoading } = useAuthCheck();
+
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);
 
   useEffect(() => {
-    if (loaded) {
+    if (loaded && !authLoading) {
       SplashScreen.hideAsync();
     }
-  }, [loaded]);
+  }, [loaded, authLoading]);
 
-  if (!loaded) {
+  if (!loaded || authLoading) {
     return null;
   }
 
@@ -65,6 +69,10 @@ function RootLayoutNav() {
       />
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack>
+          {/* Auth Stack */}
+          <Stack.Screen name="auth" options={{ headerShown: false }} />
+          
+          {/* Main App Stack */}
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="event" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />

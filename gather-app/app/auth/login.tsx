@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -16,7 +17,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import type { LoginCredentials, AuthError } from '@/constants/auth';
+import type { LoginCredentials, AuthError, AuthUser } from '@/constants/auth';
+import { AuthStorage } from '@/utils/async';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -68,13 +70,25 @@ export default function LoginScreen() {
       // Simulate API call - Replace with actual Supabase auth
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      // Mock successful login
+      // Mock successful login - replace with actual user data from API
+      const userData: AuthUser = {
+        id: 'user_123',
+        email: credentials.email,
+        name: 'John Doe', // This would come from your API
+        created_at: new Date().toISOString(),
+      };
+      
+      // Store auth data in AsyncStorage
+      await AuthStorage.setLoggedIn(true);
+      await AuthStorage.setUserInfo(userData);
+      
       console.log('Login successful:', credentials.email);
       
-      // Navigate to main app
+      // Navigate to main app - the auth check will handle this automatically
       router.replace('/(tabs)');
       
     } catch (error) {
+      console.error('Login error:', error);
       setErrors({
         message: 'Invalid email or password. Please try again.',
       });
@@ -88,7 +102,6 @@ export default function LoginScreen() {
   };
 
   const navigateToForgotPassword = () => {
-    // Navigate to forgot password screen when implemented
     Alert.alert('Forgot Password', 'Forgot password feature coming soon!');
   };
 
@@ -112,9 +125,11 @@ export default function LoginScreen() {
         >
           {/* Header */}
           <ThemedView style={styles.header}>
-            <Text style={[styles.logo, { color: palette.primary }]}>
-              Gather
-            </Text>
+            <Image 
+              source={require('@/assets/images/gather.png')} 
+              style={styles.logo}
+              resizeMode="contain"
+            />
             <ThemedText style={[styles.subtitle, { color: palette.muted }]}>
               Welcome back! Sign in to continue.
             </ThemedText>
@@ -292,9 +307,9 @@ const styles = StyleSheet.create({
     marginBottom: 48,
   },
   logo: {
-    fontSize: 42,
-    fontFamily: 'Poppins-SemiBold',
-    marginBottom: 8,
+    width: 120,
+    height: 80,
+    marginBottom: 16,
   },
   subtitle: {
     fontSize: 16,
