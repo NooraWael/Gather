@@ -13,22 +13,22 @@ export default function EditScreenInfo({ path }: { path: string }) {
       <View style={styles.getStartedContainer}>
         <Text
           style={styles.getStartedText}
-          lightColor="rgba(0,0,0,0.8)"
-          darkColor="rgba(255,255,255,0.8)">
+          lightColor={Colors.light.secondary}
+          darkColor={Colors.dark.text}>
           Open up the code for this screen:
         </Text>
 
         <View
           style={[styles.codeHighlightContainer, styles.homeScreenFilename]}
-          darkColor="rgba(255,255,255,0.05)"
-          lightColor="rgba(0,0,0,0.05)">
+          darkColor={Colors.dark.surface}
+          lightColor={Colors.light.surface}>
           <MonoText>{path}</MonoText>
         </View>
 
         <Text
           style={styles.getStartedText}
-          lightColor="rgba(0,0,0,0.8)"
-          darkColor="rgba(255,255,255,0.8)">
+          lightColor={Colors.light.secondary}
+          darkColor={Colors.dark.text}>
           Change any of the text, save the file, and your app will automatically update.
         </Text>
       </View>
@@ -37,7 +37,10 @@ export default function EditScreenInfo({ path }: { path: string }) {
         <ExternalLink
           style={styles.helpLink}
           href="https://docs.expo.io/get-started/create-a-new-app/#opening-the-app-on-your-phonetablet">
-          <Text style={styles.helpLinkText} lightColor={Colors.light.tint}>
+          <Text
+            style={styles.helpLinkText}
+            lightColor={Colors.light.accent}
+            darkColor={Colors.dark.accent}>
             Tap here if your app doesn't automatically update after making changes
           </Text>
         </ExternalLink>
@@ -55,13 +58,15 @@ const styles = StyleSheet.create({
     marginVertical: 7,
   },
   codeHighlightContainer: {
-    borderRadius: 3,
-    paddingHorizontal: 4,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
   getStartedText: {
     fontSize: 17,
     lineHeight: 24,
     textAlign: 'center',
+    fontFamily: 'Inter-Regular',
   },
   helpContainer: {
     marginTop: 15,
@@ -70,8 +75,11 @@ const styles = StyleSheet.create({
   },
   helpLink: {
     paddingVertical: 15,
+    paddingHorizontal: 20,
   },
   helpLinkText: {
     textAlign: 'center',
+    fontFamily: 'Poppins-Regular',
+    letterSpacing: 0.5,
   },
 });
