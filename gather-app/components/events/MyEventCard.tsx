@@ -28,7 +28,7 @@ const MyEventCard = ({
   const palette = Colors[colorScheme];
 
   const handlePress = () => {
-    // router.push(`/event/${id}`); TODO MAKE THIS PAGE
+     router.push(`/event/${id}`);
   };
 
   const iconMutedColor = palette.muted;

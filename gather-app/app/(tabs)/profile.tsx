@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
 import { Text, View } from '@/components/Themed';
@@ -52,6 +52,64 @@ export default function ProfileScreen() {
     return { backgroundColor: palette.accent };
   };
 
+  const handleLogout = () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: () => {
+            // Handle logout logic here
+            console.log('User logged out');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'This action cannot be undone. All your data, events, and connections will be permanently deleted.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Final Confirmation',
+              'Are you absolutely sure you want to delete your account? This cannot be undone.',
+              [
+                {
+                  text: 'Cancel',
+                  style: 'cancel',
+                },
+                {
+                  text: 'Confirm Delete',
+                  style: 'destructive',
+                  onPress: () => {
+                    // Handle account deletion logic here
+                    console.log('Account deletion confirmed');
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: palette.background }]}
@@ -83,7 +141,8 @@ export default function ProfileScreen() {
             <Text style={[styles.bio, { color: palette.text }]}>{profile.bio}</Text>
           </View>
         </View>
-            {/* Interests */}
+
+        {/* Interests */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: palette.text }]}>Interests</Text>
           <View style={styles.chipContainer}>
@@ -131,7 +190,7 @@ export default function ProfileScreen() {
                   </View>
                   
                   <View style={[styles.eventMetaContainer, {backgroundColor: palette.surface}]}>
-                <View style={[styles.metaRow, {backgroundColor: palette.surface}]}>
+                    <View style={[styles.metaRow, {backgroundColor: palette.surface}]}>
                       <Feather name="calendar" size={14} color={palette.secondary} />
                       <Text style={[styles.eventMeta, { color: palette.muted }]}>{event.date}</Text>
                     </View>
@@ -148,7 +207,44 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-    
+        {/* Account Actions */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Account</Text>
+          
+          {/* Logout Button */}
+          <Pressable
+            onPress={handleLogout}
+            style={({ pressed }) => [
+              styles.actionButton,
+              styles.logoutButton,
+              { 
+                backgroundColor: palette.surface,
+                borderColor: palette.muted + '40',
+                opacity: pressed ? 0.7 : 1
+              }
+            ]}
+          >
+            <Feather name="log-out" size={20} color={palette.secondary} />
+            <Text style={[styles.actionButtonText, { color: palette.text }]}>Logout</Text>
+          </Pressable>
+
+          {/* Delete Account Button */}
+          <Pressable
+            onPress={handleDeleteAccount}
+            style={({ pressed }) => [
+              styles.actionButton,
+              styles.deleteButton,
+              { 
+                backgroundColor: '#FEF2F2',
+                borderColor: '#FCA5A5',
+                opacity: pressed ? 0.7 : 1
+              }
+            ]}
+          >
+            <Feather name="trash-2" size={20} color="#DC2626" />
+            <Text style={[styles.actionButtonText, styles.deleteButtonText]}>Delete Account</Text>
+          </Pressable>
+        </View>
       </SafeAreaView>
     </ScrollView>
   );
@@ -225,7 +321,7 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: 16,
-        marginBottom: 30,
+    marginBottom: 30,
   },
   sectionTitle: {
     fontFamily: 'Poppins-SemiBold',
@@ -340,5 +436,28 @@ const styles = StyleSheet.create({
   chipText: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderRadius: 0,
+    gap: 12,
+    marginBottom: 12,
+  },
+  logoutButton: {
+    // Styles handled dynamically in component
+  },
+  deleteButton: {
+    // Delete-specific styles handled in component
+  },
+  actionButtonText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
+  },
+  deleteButtonText: {
+    color: '#DC2626',
   },
 });

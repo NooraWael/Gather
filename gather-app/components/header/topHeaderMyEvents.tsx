@@ -18,7 +18,7 @@ const SimpleTopNavigation = () => {
 
   const handleAddPress = () => {
     // Navigate to create event page when ready
-    // router.push('/create-event');
+     router.push('/event/addEvent');
     console.log('Add event pressed');
   };
 

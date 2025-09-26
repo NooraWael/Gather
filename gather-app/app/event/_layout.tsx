@@ -13,6 +13,12 @@ export default function EventLayout() {
           headerShown: false,
         }}
       />
+        <Stack.Screen 
+        name="addEvent" 
+        options={{
+          headerShown: false,
+        }}
+      />
     </Stack>
   );
 }
