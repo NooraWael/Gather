@@ -4,12 +4,12 @@
     "slug": "gather-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/icon-4.png",
     "scheme": "gatherapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/splash-icon.png",
+      "image": "./assets/images/icon-3.png",
       "resizeMode": "contain",
       "backgroundColor": "#F2E6D9"
     },

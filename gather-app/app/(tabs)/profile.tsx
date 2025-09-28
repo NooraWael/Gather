@@ -5,6 +5,8 @@ import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { AuthStorage } from '@/utils/async';
+import { router } from 'expo-router';
 
 const profile = {
   name: 'Noora Qasim',
@@ -52,26 +54,32 @@ export default function ProfileScreen() {
     return { backgroundColor: palette.accent };
   };
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
+  const handleLogout = async () => {
+  Alert.alert(
+    'Logout',
+    'Are you sure you want to logout?',
+    [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await AuthStorage.clearAuthData();
+            router.replace('/auth/login');
+            console.log('User logged out successfully');
+          } catch (error) {
+            console.error('Logout failed:', error);
+            Alert.alert('Error', 'Failed to logout. Please try again.');
+          }
         },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: () => {
-            // Handle logout logic here
-            console.log('User logged out');
-          },
-        },
-      ]
-    );
-  };
+      },
+    ]
+  );
+};
 
   const handleDeleteAccount = () => {
     Alert.alert(

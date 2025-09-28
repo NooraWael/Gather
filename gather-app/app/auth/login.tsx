@@ -126,7 +126,7 @@ export default function LoginScreen() {
           {/* Header */}
           <ThemedView style={styles.header}>
             <Image 
-              source={require('@/assets/images/gather.png')} 
+              source={require('@/assets/images/icon-2.png')} 
               style={styles.logo}
               resizeMode="contain"
             />
@@ -307,8 +307,8 @@ const styles = StyleSheet.create({
     marginBottom: 48,
   },
   logo: {
-    width: 120,
-    height: 80,
+    width: 200,
+    height: 200,
     marginBottom: 16,
   },
   subtitle: {
