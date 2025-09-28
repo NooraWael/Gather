@@ -17,8 +17,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import type { LoginCredentials, AuthError, AuthUser } from '@/constants/auth';
+import type { LoginCredentials, AuthError } from '@/constants/auth';
 import { AuthStorage } from '@/utils/async';
+import { signIn as signInService } from '@/services/auth';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -67,31 +68,28 @@ export default function LoginScreen() {
     setIsLoading(true);
 
     try {
-      // Simulate API call - Replace with actual Supabase auth
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Mock successful login - replace with actual user data from API
-      const userData: AuthUser = {
-        id: 'user_123',
-        email: credentials.email,
-        name: 'John Doe', // This would come from your API
-        created_at: new Date().toISOString(),
-      };
-      
-      // Store auth data in AsyncStorage
+      const user = await signInService(credentials);
+
+      if (!user) {
+        setErrors({ message: 'Unable to sign you in right now. Please try again.' });
+        return;
+      }
+
       await AuthStorage.setLoggedIn(true);
-      await AuthStorage.setUserInfo(userData);
-      
+      await AuthStorage.setUserInfo(user);
+
       console.log('Login successful:', credentials.email);
-      
-      // Navigate to main app - the auth check will handle this automatically
+
       router.replace('/(tabs)');
-      
     } catch (error) {
       console.error('Login error:', error);
-      setErrors({
-        message: 'Invalid email or password. Please try again.',
-      });
+
+      let message = 'Invalid email or password. Please try again.';
+      if (error instanceof Error && error.message) {
+        message = error.message;
+      }
+
+      setErrors({ message });
     } finally {
       setIsLoading(false);
     }

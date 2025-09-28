@@ -17,6 +17,7 @@ import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import type { RegisterCredentials, AuthError } from '@/constants/auth';
+import { signUp as signUpService } from '@/services/auth';
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -26,6 +27,7 @@ export default function RegisterScreen() {
   const [credentials, setCredentials] = useState<RegisterCredentials>({
     name: '',
     email: '',
+    phone: '',
     password: '',
     confirmPassword: '',
   });
@@ -55,6 +57,18 @@ export default function RegisterScreen() {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(credentials.email)) {
       setErrors({ message: 'Please enter a valid email address', field: 'email' });
+      return false;
+    }
+
+    // Phone validation
+    if (!credentials.phone.trim()) {
+      setErrors({ message: 'Phone number is required', field: 'phone' });
+      return false;
+    }
+
+    const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+    if (!phoneRegex.test(credentials.phone.replace(/\s+/g, ''))) {
+      setErrors({ message: 'Please enter a valid phone number with country code', field: 'phone' });
       return false;
     }
 
@@ -101,28 +115,34 @@ export default function RegisterScreen() {
     setIsLoading(true);
 
     try {
-      // Simulate API call - Replace with actual Supabase auth
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Mock successful registration
-      console.log('Registration successful:', credentials.email);
-      
-      // Show success message
-      Alert.alert(
-        'Account Created!',
-        'Your account has been created successfully. You can now sign in.',
-        [
-          {
-            text: 'OK',
-            onPress: () => router.replace('/auth/login')
-          }
-        ]
-      );
-      
+      const result = await signUpService(credentials);
+
+      if (!result || !result.needsVerification) {
+        setErrors({ message: 'Unable to create your account right now. Please try again.' });
+        return;
+      }
+
+      // Navigate to code verification screen with phone number
+      router.push({
+        pathname: '/auth/code',
+        params: { 
+          phone: credentials.phone,
+          email: credentials.email,
+          name: credentials.name,
+          type: 'signup'
+        }
+      });
     } catch (error) {
+      console.error('Registration error:', error);
+
+      let message = 'An account with this email or phone number already exists. Please try different details.';
+      if (error instanceof Error && error.message) {
+        message = error.message;
+      }
+
       setErrors({
-        message: 'An account with this email already exists. Please try a different email.',
-        field: 'email'
+        message,
+        field: 'email',
       });
     } finally {
       setIsLoading(false);
@@ -255,6 +275,48 @@ export default function RegisterScreen() {
               {getFieldError('email') && (
                 <ThemedText style={styles.errorText}>
                   {getFieldError('email')}
+                </ThemedText>
+              )}
+            </ThemedView>
+
+            {/* Phone Input */}
+            <ThemedView style={styles.inputGroup}>
+              <ThemedText style={[styles.label, { color: palette.secondary }]}>
+                Phone Number
+              </ThemedText>
+              <ThemedView 
+                style={[
+                  styles.inputContainer,
+                  { 
+                    borderColor: getFieldError('phone') ? '#EF4444' : palette.muted + '40',
+                    backgroundColor: palette.surface 
+                  }
+                ]}
+              >
+                <Feather 
+                  name="phone" 
+                  size={20} 
+                  color={palette.muted} 
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={[styles.input, { color: palette.primary }]}
+                  value={credentials.phone}
+                  onChangeText={(text) => {
+                    setCredentials(prev => ({ ...prev, phone: text }));
+                    if (errors?.field === 'phone') setErrors(null);
+                  }}
+                  placeholder="+1234567890"
+                  placeholderTextColor={palette.muted}
+                  keyboardType="phone-pad"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!isLoading}
+                />
+              </ThemedView>
+              {getFieldError('phone') && (
+                <ThemedText style={styles.errorText}>
+                  {getFieldError('phone')}
                 </ThemedText>
               )}
             </ThemedView>

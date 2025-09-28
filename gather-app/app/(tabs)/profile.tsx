@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, Pressable, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { ScrollView, StyleSheet, Pressable, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
 import { Text, View } from '@/components/Themed';
@@ -7,79 +8,159 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AuthStorage } from '@/utils/async';
 import { router } from 'expo-router';
-
-const profile = {
-  name: 'Noora Qasim',
-  email: 'noora.qasim@example.com',
-  location: 'San Francisco, CA',
-  bio: 'Community builder focused on connecting neighbors through shared experiences and creative events.',
-  memberSince: 'Joined January 2024',
-};
-
-const stats = [
-  { label: 'Events Hosting', value: 6 },
-  { label: 'Joined Events', value: 18 },
-  { label: 'People Connected', value: 142 },
-];
-
-const upcomingRegistrations = [
-  {
-    id: 'reg-1',
-    title: 'Morning Yoga in the Park',
-    date: 'Oct 20 • 7:00 AM',
-    location: 'Riverside Park',
-    status: 'Registered',
-    statusType: 'registered',
-  },
-  {
-    id: 'reg-2',
-    title: 'Community Food Festival',
-    date: 'Oct 15 • 12:00 PM',
-    location: 'Central Park',
-    status: 'Hosting',
-    statusType: 'hosting',
-  },
-];
-
-const interests = ['Community', 'Health & Wellness', 'Outdoor', 'Food & Drink', 'Workshops'];
+import { 
+  getCurrentUserProfile, 
+  getUserStats, 
+  getUserUpcomingEvents,
+  deleteUserAccount,
+  UserProfile, 
+  UserStats, 
+  UserRegistrationWithEvent 
+} from '@/services/user';
+import { signOut } from '@/services/auth';
+import { supabase } from '@/services/supabase';
 
 export default function ProfileScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
 
-  const getStatusPillStyle = (statusType: string) => {
-    if (statusType === 'hosting') {
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [stats, setStats] = useState<UserStats>({ eventsHosting: 0, joinedEvents: 0, peopleConnected: 0 });
+  const [upcomingEvents, setUpcomingEvents] = useState<UserRegistrationWithEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+ const fetchUserData = async () => {
+  try {
+    // First check if user is logged in according to AsyncStorage
+    const isUserLoggedIn = await AuthStorage.isLoggedIn(); // Changed this line
+    const storedUserInfo = await AuthStorage.getUserInfo();
+       console.log('AsyncStorage - isLoggedIn:', isUserLoggedIn);
+    console.log('AsyncStorage - userInfo:', storedUserInfo);
+    
+    if (!isUserLoggedIn) {
+      router.replace('/auth/login');
+      return;
+    }
+
+     const { data: { user } } = await supabase.auth.getUser();
+    console.log('Supabase auth user:', user?.id, user?.email);
+    
+    
+
+    // Wait a moment for Supabase to restore session
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const userProfile = await getCurrentUserProfile();
+    
+    if (!userProfile) {
+      // Only redirect to login if both AsyncStorage says logged out AND no profile
+      const stillLoggedIn = await AuthStorage.isLoggedIn(); // And this line
+      if (!stillLoggedIn) {
+        router.replace('/auth/login');
+        return;
+      }
+      
+      // Profile doesn't exist but user should be logged in - handle gracefully
+      Alert.alert('Profile Error', 'Unable to load your profile. Please try again.');
+      return;
+    }
+
+    setProfile(userProfile);
+
+    const [userStats, userEvents] = await Promise.all([
+      getUserStats(userProfile.id),
+      getUserUpcomingEvents(userProfile.id)
+    ]);
+
+    setStats(userStats);
+    setUpcomingEvents(userEvents);
+  } catch (error) {
+    console.error('Error fetching user data:', error);
+    
+    // Check AsyncStorage before redirecting on error
+    const isUserLoggedIn = await AuthStorage.isLoggedIn(); // And this line
+    if (!isUserLoggedIn) {
+      router.replace('/auth/login');
+    } else {
+      Alert.alert('Error', 'Failed to load profile data. Please try again.');
+    }
+  } finally {
+    setLoading(false);
+    setRefreshing(false);
+  }
+};
+
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchUserData();
+  };
+
+  const getStatusPillStyle = (statusType: string, isHosting: boolean) => {
+    if (isHosting) {
       return { backgroundColor: palette.primary };
     }
     return { backgroundColor: palette.accent };
   };
 
+  const formatEventDate = (dateTime: string) => {
+    const date = new Date(dateTime);
+    const month = date.toLocaleDateString('en-US', { month: 'short' });
+    const day = date.getDate();
+    const time = date.toLocaleTimeString('en-US', { 
+      hour: 'numeric', 
+      minute: '2-digit',
+      hour12: true 
+    });
+    return `${month} ${day} • ${time}`;
+  };
+
+  const getStatusText = (registration: UserRegistrationWithEvent) => {
+    const isHosting = registration.event.created_by === profile?.id;
+    return isHosting ? 'Hosting' : 'Registered';
+  };
+
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+  };
+
+  const getMemberSinceText = (createdAt: string) => {
+    const date = new Date(createdAt);
+    const month = date.toLocaleDateString('en-US', { month: 'long' });
+    const year = date.getFullYear();
+    return `Joined ${month} ${year}`;
+  };
+
   const handleLogout = async () => {
-  Alert.alert(
-    'Logout',
-    'Are you sure you want to logout?',
-    [
-      {
-        text: 'Cancel',
-        style: 'cancel',
-      },
-      {
-        text: 'Logout',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await AuthStorage.clearAuthData();
-            router.replace('/auth/login');
-            console.log('User logged out successfully');
-          } catch (error) {
-            console.error('Logout failed:', error);
-            Alert.alert('Error', 'Failed to logout. Please try again.');
-          }
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
         },
-      },
-    ]
-  );
-};
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut();
+              await AuthStorage.clearAuthData();
+              router.replace('/auth/login');
+            } catch (error) {
+              console.error('Logout failed:', error);
+              Alert.alert('Error', 'Failed to logout. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleDeleteAccount = () => {
     Alert.alert(
@@ -105,9 +186,19 @@ export default function ProfileScreen() {
                 {
                   text: 'Confirm Delete',
                   style: 'destructive',
-                  onPress: () => {
-                    // Handle account deletion logic here
-                    console.log('Account deletion confirmed');
+                  onPress: async () => {
+                    try {
+                      const success = await deleteUserAccount();
+                      if (success) {
+                        await AuthStorage.clearAuthData();
+                        router.replace('/auth/login');
+                      } else {
+                        Alert.alert('Error', 'Failed to delete account. Please try again.');
+                      }
+                    } catch (error) {
+                      console.error('Account deletion failed:', error);
+                      Alert.alert('Error', 'Failed to delete account. Please try again.');
+                    }
                   },
                 },
               ]
@@ -118,55 +209,91 @@ export default function ProfileScreen() {
     );
   };
 
+  if (loading) {
+    return (
+      <View style={[styles.loadingContainer, { backgroundColor: palette.background }]}>
+        <ActivityIndicator size="large" color={palette.primary} />
+        <Text style={[styles.loadingText, { color: palette.muted }]}>Loading your profile...</Text>
+      </View>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <View style={[styles.loadingContainer, { backgroundColor: palette.background }]}>
+        <Text style={[styles.errorText, { color: palette.muted }]}>Failed to load profile</Text>
+      </View>
+    );
+  }
+
+  const statsData = [
+    { label: 'Events Hosting', value: stats.eventsHosting },
+    { label: 'Joined Events', value: stats.joinedEvents },
+    { label: 'People Connected', value: stats.peopleConnected },
+  ];
+
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: palette.background }]}
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={palette.primary}
+        />
+      }
     >
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
         {/* Profile Header */}
         <View style={[styles.profileHeaderCard, { backgroundColor: palette.surface, borderColor: palette.muted + '30' }]}>
           <View style={[styles.avatar, { backgroundColor: palette.primary }]}>
-            <Text style={styles.avatarText}>{profile.name.split(' ').map((n) => n[0]).join('')}</Text>
+            <Text style={styles.avatarText}>{getInitials(profile.name)}</Text>
           </View>
 
-          <View style={[styles.profileContent, {backgroundColor: palette.surface}]}>
+          <View style={[styles.profileContent, { backgroundColor: palette.surface }]}>
             <Text style={[styles.name, { color: palette.text }]}>{profile.name}</Text>
             <Text style={[styles.email, { color: palette.muted }]}>{profile.email}</Text>
             
-            <View style={[styles.metaContainer, {backgroundColor: palette.surface}]}>
-              <View style={[styles.metaRow, {backgroundColor: palette.surface}]}>
-                <Feather name="map-pin" size={14} color={palette.muted}  />
-                <Text style={[styles.metaText, { color: palette.muted, backgroundColor: palette.surface }]}>{profile.location}</Text>
-              </View>
-                 <View style={[styles.metaRow, {backgroundColor: palette.surface}]}>
+            <View style={[styles.metaContainer, { backgroundColor: palette.surface }]}>
+              {profile.location && (
+                <View style={[styles.metaRow, { backgroundColor: palette.surface }]}>
+                  <Feather name="map-pin" size={14} color={palette.muted} />
+                  <Text style={[styles.metaText, { color: palette.muted }]}>{profile.location}</Text>
+                </View>
+              )}
+              <View style={[styles.metaRow, { backgroundColor: palette.surface }]}>
                 <Feather name="calendar" size={14} color={palette.muted} />
-                <Text style={[styles.metaText, { color: palette.muted }]}>{profile.memberSince}</Text>
+                <Text style={[styles.metaText, { color: palette.muted }]}>{getMemberSinceText(profile.created_at)}</Text>
               </View>
             </View>
             
-            <Text style={[styles.bio, { color: palette.text }]}>{profile.bio}</Text>
+            {profile.bio && (
+              <Text style={[styles.bio, { color: palette.text }]}>{profile.bio}</Text>
+            )}
           </View>
         </View>
 
         {/* Interests */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: palette.text }]}>Interests</Text>
-          <View style={styles.chipContainer}>
-            {interests.map((interest) => (
-              <View key={interest} style={[styles.chip, { backgroundColor: palette.surface, borderColor: palette.muted + '40' }]}>
-                <Text style={[styles.chipText, { color: palette.text }]}>{interest}</Text>
-              </View>
-            ))}
+        {profile.interests && profile.interests.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: palette.text }]}>Interests</Text>
+            <View style={styles.chipContainer}>
+              {profile.interests.map((interest, index) => (
+                <View key={index} style={[styles.chip, { backgroundColor: palette.surface, borderColor: palette.muted + '40' }]}>
+                  <Text style={[styles.chipText, { color: palette.text }]}>{interest}</Text>
+                </View>
+              ))}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Stats Section */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: palette.text }]}>Your Impact</Text>
           <View style={styles.statsRow}>
-            {stats.map((stat) => (
+            {statsData.map((stat) => (
               <View key={stat.label} style={[styles.statCard, { backgroundColor: palette.surface, borderColor: palette.muted + '30' }]}>
                 <Text style={[styles.statValue, { color: palette.primary }]}>{stat.value}</Text>
                 <Text style={[styles.statLabel, { color: palette.muted }]}>{stat.label}</Text>
@@ -176,44 +303,51 @@ export default function ProfileScreen() {
         </View>
 
         {/* Upcoming Plans */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: palette.text }]}>Upcoming Plans</Text>
-          <View style={styles.upcomingPlansContainer}>
-            {upcomingRegistrations.map((event, index) => (
-              <View
-                key={event.id}
-                style={[
-                  styles.eventCard,
-                  { backgroundColor: palette.surface, borderColor: palette.muted + '30' }
-                ]}
-              >
-                <View style={[styles.eventContent, {backgroundColor: palette.surface}]}>
-                  <View style={[styles.eventHeader, {backgroundColor: palette.surface}]}>
-                    <Text style={[styles.eventTitle, { color: palette.text }]} numberOfLines={2}>
-                      {event.title}
-                    </Text>
-                    <View style={[styles.statusPill, getStatusPillStyle(event.statusType)]}>
-                      <Text style={styles.statusText}>{event.status}</Text>
+        {upcomingEvents.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: palette.text }]}>Upcoming Plans</Text>
+            <View style={styles.upcomingPlansContainer}>
+              {upcomingEvents.slice(0, 3).map((registration) => {
+                const isHosting = registration.event.created_by === profile.id;
+                return (
+                  <View
+                    key={registration.id}
+                    style={[
+                      styles.eventCard,
+                      { backgroundColor: palette.surface, borderColor: palette.muted + '30' }
+                    ]}
+                  >
+                    <View style={[styles.eventContent, { backgroundColor: palette.surface }]}>
+                      <View style={[styles.eventHeader, { backgroundColor: palette.surface }]}>
+                        <Text style={[styles.eventTitle, { color: palette.text }]} numberOfLines={2}>
+                          {registration.event.title}
+                        </Text>
+                        <View style={[styles.statusPill, getStatusPillStyle(registration.status, isHosting)]}>
+                          <Text style={styles.statusText}>{getStatusText(registration)}</Text>
+                        </View>
+                      </View>
+                      
+                      <View style={[styles.eventMetaContainer, { backgroundColor: palette.surface }]}>
+                        <View style={[styles.metaRow, { backgroundColor: palette.surface }]}>
+                          <Feather name="calendar" size={14} color={palette.secondary} />
+                          <Text style={[styles.eventMeta, { color: palette.muted }]}>
+                            {formatEventDate(registration.event.date_time)}
+                          </Text>
+                        </View>
+                        <View style={[styles.metaRow, { backgroundColor: palette.surface }]}>
+                          <Feather name="map-pin" size={14} color={palette.secondary} />
+                          <Text style={[styles.eventMeta, { color: palette.muted }]} numberOfLines={1}>
+                            {registration.event.location}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
                   </View>
-                  
-                  <View style={[styles.eventMetaContainer, {backgroundColor: palette.surface}]}>
-                    <View style={[styles.metaRow, {backgroundColor: palette.surface}]}>
-                      <Feather name="calendar" size={14} color={palette.secondary} />
-                      <Text style={[styles.eventMeta, { color: palette.muted }]}>{event.date}</Text>
-                    </View>
-                    <View style={[styles.metaRow, {backgroundColor: palette.surface}]}>
-                      <Feather name="map-pin" size={14} color={palette.secondary} />
-                      <Text style={[styles.eventMeta, { color: palette.muted }]} numberOfLines={1}>
-                        {event.location}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              </View>
-            ))}
+                );
+              })}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Account Actions */}
         <View style={styles.section}>
@@ -267,15 +401,21 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
     gap: 36,
   },
-  card: {
-    borderRadius: 20,
-    padding: 24,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+  },
+  errorText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    textAlign: 'center',
   },
   avatar: {
     width: 80,
@@ -363,10 +503,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 16,
   },
-  eventRow: {
-    paddingVertical: 16,
-    borderBottomWidth: 0,
-  },
   profileHeaderCard: {
     borderRadius: 0,
     padding: 24,
@@ -418,11 +554,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   eventMetaContainer: {
-    gap: 8,
-  },
-  eventMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
   },
   eventMeta: {
