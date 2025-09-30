@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,115 +19,170 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import type { EventWithRegistrations, Registration, RegistrationStatus } from '@/constants/types';
-import { router } from 'expo-router';
-
-// Mock user data for registrations
-const mockUsers: { [key: string]: any } = {
-  'user456': { id: 'user456', name: 'Mohammed Hassan', email: 'mohammed@example.com' },
-  'user789': { id: 'user789', name: 'Fatima Al-Zahra', email: 'fatima@example.com' },
-  'user101': { id: 'user101', name: 'Ahmed Al-Mansouri', email: 'ahmed@example.com' },
-  'user102': { id: 'user102', name: 'Layla Ibrahim', email: 'layla@example.com' },
-  'user103': { id: 'user103', name: 'Omar Khalil', email: 'omar@example.com' },
-  'user104': { id: 'user104', name: 'Nour Al-Din', email: 'nour@example.com' },
-};
-
-// Mock event data with more registrations
-const mockEvent: EventWithRegistrations = {
-   id: '1',
-    title: 'Community Food Festival',
-    description: 'Join us for an amazing community food festival featuring local vendors, live music, and activities for the whole family.',
-    date_time: '2025-10-15T12:00:00Z',
-    location: 'Central Park, Main Pavilion Area',
-    capacity: 200,
-    is_paid: true,
-    image_url: 'https://images.unsplash.com/photo-1528716321680-815a8cdb8cbe?auto=format&fit=crop&w=900&q=80',
-    category: 'Food & Drink',
-    status: 'accepted',
-    phone_number: '+973-1234-5678',
-    created_by: 'user123', // This user's event
-    created_at: '2025-09-20T10:00:00Z',
-    current_attendees: 6,
-    creator: {
-      id: 'user123',
-      name: 'Sarah Johnson',
-      email: 'sarah@example.com',
-      created_at: '2025-08-15T10:00:00Z',
-    },
-  registrations: [
-    { id: 'reg1', user_id: 'user456', status: 'registered', created_at: '2024-10-01T10:00:00Z', event_id: '1' },
-    { id: 'reg2', user_id: 'user789', status: 'pending_payment', created_at: '2024-10-02T14:30:00Z' , event_id: '1'},
-    { id: 'reg3', user_id: 'user101', status: 'approved', created_at: '2024-09-28T09:15:00Z' , event_id: '1'},
-    { id: 'reg4', user_id: 'user102', status: 'approved', created_at: '2024-09-29T16:45:00Z', event_id: '1' },
-    { id: 'reg5', user_id: 'user103', status: 'registered', created_at: '2024-10-03T11:20:00Z', event_id: '1' },
-    { id: 'reg6', user_id: 'user104', status: 'approved', created_at: '2024-09-30T13:10:00Z', event_id: '1' },
-  ]
-};
+import type { EventWithRegistrations, RegistrationStatus } from '@/constants/types';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { getEventWithRegistrations } from '@/services/event';
+import {
+  getRegistrationsForEvent,
+  RegistrationWithUser,
+  updateRegistrationStatus,
+} from '@/services/registration';
 
 type TabType = 'pending' | 'approved';
+
+const isPendingStatus = (status: RegistrationStatus) =>
+  status === 'registered' || status === 'pending_payment';
 
 export default function EventParticipantsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
+  const router = useRouter();
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const eventId = Array.isArray(params.id) ? params.id[0] : params.id ?? null;
+
   const [activeTab, setActiveTab] = useState<TabType>('pending');
-  const [event, setEvent] = useState<EventWithRegistrations>(mockEvent);
-  const [loading, setLoading] = useState<string | null>(null);
-  const [confirmModal, setConfirmModal] = useState<{ 
-    visible: boolean; 
-    action: string; 
-    registrationId: string; 
-    userName: string 
-  }>({
+  const [event, setEvent] = useState<EventWithRegistrations | null>(null);
+  const [registrations, setRegistrations] = useState<RegistrationWithUser[]>([]);
+  const [screenLoading, setScreenLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmModal, setConfirmModal] = useState({
     visible: false,
     action: '',
     registrationId: '',
     userName: '',
   });
-  
-  // Search states
   const [searchQuery, setSearchQuery] = useState('');
+  const isMountedRef = useRef(true);
 
-  const handleApproveRegistration = async (registrationId: string) => {
-    setLoading(registrationId);
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      const updatedEvent = {
-        ...event,
-        registrations: event.registrations.map(reg => 
-          reg.id === registrationId ? { ...reg, status: 'approved' as RegistrationStatus } : reg
-        )
-      };
-      setEvent(updatedEvent);
-      Alert.alert('Success', 'Registration approved successfully!');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to approve registration.');
-    } finally {
-      setLoading(null);
-    }
-  };
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
-  const handleRemoveParticipant = async (registrationId: string) => {
-    setLoading(registrationId);
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      const updatedEvent = {
-        ...event,
-        registrations: event.registrations.filter(reg => reg.id !== registrationId),
-        current_attendees: Math.max(0, event.current_attendees - 1),
-      };
-      setEvent(updatedEvent);
-      Alert.alert('Success', 'Participant removed successfully!');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to remove participant.');
-    } finally {
-      setLoading(null);
-      setConfirmModal({ visible: false, action: '', registrationId: '', userName: '' });
+  const loadData = useCallback(
+    async ({ showLoader = true }: { showLoader?: boolean } = {}) => {
+      if (!eventId) {
+        setError('Missing event identifier.');
+        if (showLoader) setScreenLoading(false);
+        return;
+      }
+
+      if (showLoader) {
+        setScreenLoading(true);
+      }
+
+      try {
+        setError(null);
+        const [eventData, registrantData] = await Promise.all([
+          getEventWithRegistrations(eventId),
+          getRegistrationsForEvent(eventId),
+        ]);
+
+        if (!isMountedRef.current) return;
+
+        if (!eventData) {
+          setError('Event not found.');
+          Alert.alert('Event not found', 'This event may have been removed.', [
+            { text: 'OK', onPress: () => router.back() },
+          ]);
+          return;
+        }
+
+        setEvent(eventData);
+        setRegistrations(registrantData);
+      } catch (err) {
+        console.error('Failed to load participants:', err);
+        if (!isMountedRef.current) return;
+        setError('Failed to load participants.');
+      } finally {
+        if (isMountedRef.current && showLoader) {
+          setScreenLoading(false);
+        }
+      }
+    },
+    [eventId, router],
+  );
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData({ showLoader: false });
+    if (isMountedRef.current) {
+      setRefreshing(false);
     }
-  };
+  }, [loadData]);
+
+  const handleApproveRegistration = useCallback(
+    async (registrationId: string) => {
+      setActionLoading(registrationId);
+      try {
+        await updateRegistrationStatus(registrationId, 'approved');
+        if (!isMountedRef.current) return;
+
+        setRegistrations((prev) =>
+          prev.map((reg) =>
+            reg.id === registrationId ? { ...reg, status: 'approved' } : reg,
+          ),
+        );
+
+        setEvent((prev) =>
+          prev
+            ? {
+                ...prev,
+                registrations: prev.registrations.map((reg) =>
+                  reg.id === registrationId ? { ...reg, status: 'approved' } : reg,
+                ),
+              }
+            : prev,
+        );
+
+        Alert.alert('Success', 'Registration approved successfully!');
+      } catch (err) {
+        console.error('Failed to approve registration:', err);
+        Alert.alert('Error', 'Failed to approve registration.');
+      } finally {
+        setActionLoading(null);
+      }
+    },
+    [],
+  );
+
+  const handleRemoveParticipant = useCallback(
+    async (registrationId: string) => {
+      setActionLoading(registrationId);
+      try {
+        await updateRegistrationStatus(registrationId, 'cancelled');
+        if (!isMountedRef.current) return;
+
+        setRegistrations((prev) => prev.filter((reg) => reg.id !== registrationId));
+
+        setEvent((prev) =>
+          prev
+            ? {
+                ...prev,
+                registrations: prev.registrations.filter((reg) => reg.id !== registrationId),
+                current_attendees: Math.max(0, prev.current_attendees - 1),
+              }
+            : prev,
+        );
+
+        Alert.alert('Success', 'Participant removed successfully!');
+      } catch (err) {
+        console.error('Failed to remove participant:', err);
+        Alert.alert('Error', 'Failed to remove participant.');
+      } finally {
+        setActionLoading(null);
+        setConfirmModal({ visible: false, action: '', registrationId: '', userName: '' });
+      }
+    },
+    [],
+  );
 
   const showConfirmDialog = (action: string, registrationId: string, userName: string) => {
     setConfirmModal({ visible: true, action, registrationId, userName });
@@ -138,43 +194,44 @@ export default function EventParticipantsScreen() {
     }
   };
 
-  // Filter registrations based on search query and tab
-  const filterRegistrations = (registrations: Registration[], searchQuery: string) => {
-    if (!searchQuery.trim()) return registrations;
-    
-    return registrations.filter(reg => {
-      const user = mockUsers[reg.user_id];
+  const filterRegistrations = useCallback((items: RegistrationWithUser[], query: string) => {
+    if (!query.trim()) return items;
+
+    const lowered = query.toLowerCase();
+    return items.filter((reg) => {
+      const user = reg.user;
       if (!user) return false;
-      
-      const query = searchQuery.toLowerCase();
-      return (
-        user.name.toLowerCase().includes(query) ||
-        user.email.toLowerCase().includes(query)
-      );
+
+      const name = user.name?.toLowerCase() ?? '';
+      const email = user.email?.toLowerCase() ?? '';
+      return name.includes(lowered) || email.includes(lowered);
     });
-  };
+  }, []);
 
-  // Get current tab's registrations with search filtering
   const currentRegistrations = useMemo(() => {
-    let filtered;
-    if (activeTab === 'pending') {
-      filtered = event.registrations.filter(reg => 
-        reg.status === 'registered' || reg.status === 'pending_payment'
-      );
-    } else {
-      filtered = event.registrations.filter(reg => 
-        reg.status === 'approved'
-      );
-    }
-    return filterRegistrations(filtered, searchQuery);
-  }, [event.registrations, activeTab, searchQuery]);
+    const base = registrations.filter((reg) =>
+      activeTab === 'pending' ? isPendingStatus(reg.status) : reg.status === 'approved',
+    );
 
-  const renderRegistration = ({ item }: { item: Registration }) => {
-    const user = mockUsers[item.user_id];
+    return filterRegistrations(base, searchQuery);
+  }, [registrations, activeTab, searchQuery, filterRegistrations]);
+
+  const pendingCount = useMemo(
+    () => registrations.filter((reg) => isPendingStatus(reg.status)).length,
+    [registrations],
+  );
+
+  const approvedCount = useMemo(
+    () => registrations.filter((reg) => reg.status === 'approved').length,
+    [registrations],
+  );
+
+  const renderRegistration = ({ item }: { item: RegistrationWithUser }) => {
+    const user = item.user;
     if (!user) return null;
 
-    const isLoading = loading === item.id;
-    const canApprove = item.status === 'registered' || item.status === 'pending_payment';
+    const isProcessing = actionLoading === item.id;
+    const canApprove = isPendingStatus(item.status);
     const canRemove = item.status === 'approved';
 
     return (
@@ -182,14 +239,14 @@ export default function EventParticipantsScreen() {
         <ThemedView style={[styles.registrationInfo, { backgroundColor: palette.surface }]}>
           <ThemedView style={[styles.registrationHeader, { backgroundColor: palette.surface }]}>
             <ThemedText style={[styles.registrationName, { color: palette.primary, backgroundColor: palette.surface }]}>
-              {user.name}
+              {user.name ?? 'Unnamed participant'}
             </ThemedText>
           </ThemedView>
           
           <ThemedText style={[styles.registrationEmail, { color: palette.muted, backgroundColor: palette.surface }]}>
-            {user.email}
+            {user.email ?? 'No email provided'}
           </ThemedText>
-          
+
           <ThemedText style={[styles.registrationDate, { color: palette.muted, backgroundColor: palette.surface }]}>
             Registered on {new Date(item.created_at).toLocaleDateString()}
           </ThemedText>
@@ -199,10 +256,10 @@ export default function EventParticipantsScreen() {
           {canApprove && (
             <Pressable
               onPress={() => handleApproveRegistration(item.id)}
-              disabled={isLoading}
+              disabled={isProcessing}
               style={[styles.actionButton, styles.approveButton, { backgroundColor: palette.primary }]}
             >
-              {isLoading ? (
+              {isProcessing ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <>
@@ -215,11 +272,11 @@ export default function EventParticipantsScreen() {
           
           {canRemove && (
             <Pressable
-              onPress={() => showConfirmDialog('remove', item.id, user.name)}
-              disabled={isLoading}
+              onPress={() => showConfirmDialog('remove', item.id, user.name ?? 'this participant')}
+              disabled={isProcessing}
               style={[styles.actionButton, styles.removeButton, { backgroundColor: '#EF4444' }]}
             >
-              {isLoading ? (
+              {isProcessing ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <>
@@ -267,7 +324,7 @@ export default function EventParticipantsScreen() {
   // Navigation Header
   const NavigationHeader = () => (
     <ThemedView style={[styles.header, { backgroundColor: palette.background, borderBottomColor: palette.muted + '20' }]}>
-      <TouchableOpacity style={styles.backButton} onPress={() => {router.back()}}>
+      <TouchableOpacity style={styles.backButton} onPress={router.back}>
         <Feather name="arrow-left" size={24} color={palette.primary}  />
       </TouchableOpacity>
       <ThemedView style={[styles.headerContent, { backgroundColor: palette.background }]}>
@@ -275,7 +332,7 @@ export default function EventParticipantsScreen() {
           Event Participants
         </ThemedText>
         <ThemedText style={[styles.headerSubtitle, { color: palette.muted }]}>
-          {event.title}
+          {event?.title ?? 'Event overview'}
         </ThemedText>
       </ThemedView>
 
@@ -301,13 +358,38 @@ export default function EventParticipantsScreen() {
     </ThemedView>
   );
 
-  const pendingCount = event.registrations.filter(reg => 
-    reg.status === 'registered' || reg.status === 'pending_payment'
-  ).length;
-  
-  const approvedCount = event.registrations.filter(reg => 
-    reg.status === 'approved'
-  ).length;
+  if (screenLoading && !event) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: palette.background }]}
+        edges={['top', 'left', 'right']}
+      >
+        <ThemedView style={styles.loadingState}>
+          <ActivityIndicator size="large" color={palette.primary} />
+          <ThemedText style={[styles.loadingText, { color: palette.muted }]}>
+            Loading participants...
+          </ThemedText>
+        </ThemedView>
+      </SafeAreaView>
+    );
+  }
+
+  if (!event) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: palette.background }]}
+        edges={['top', 'left', 'right']}
+      >
+        <ThemedView style={styles.loadingState}>
+          <ThemedText style={[styles.loadingText, { color: palette.muted }]}>
+            {error ?? 'Event not found'}
+          </ThemedText>
+        </ThemedView>
+      </SafeAreaView>
+    );
+  }
+
+  const totalRegistrations = registrations.length;
 
   return (
     <SafeAreaView
@@ -326,7 +408,7 @@ export default function EventParticipantsScreen() {
         <ThemedView style={[styles.statsContainer, { backgroundColor: palette.surface, borderColor: palette.muted + '30' }]}>
           <ThemedView style={[styles.statItem, { backgroundColor: palette.surface }]}>
             <ThemedText style={[styles.statNumber, { color: palette.primary }]}>
-              {event.registrations.length}
+              {totalRegistrations}
             </ThemedText>
             <ThemedText style={[styles.statLabel, { color: palette.muted }]}>
               Total Registrations
@@ -383,6 +465,20 @@ export default function EventParticipantsScreen() {
           <SearchInput />
         </ThemedView>
 
+        {error && !screenLoading && (
+          <ThemedView
+            style={[
+              styles.errorBanner,
+              {
+                backgroundColor: palette.muted + '15',
+                borderColor: palette.muted + '30',
+              },
+            ]}
+          >
+            <ThemedText style={[styles.errorText, { color: '#EF4444' }]}>{error}</ThemedText>
+          </ThemedView>
+        )}
+
         {/* Participants List */}
         <FlatList
           data={currentRegistrations}
@@ -391,6 +487,14 @@ export default function EventParticipantsScreen() {
           renderItem={renderRegistration}
           showsVerticalScrollIndicator={false}
           ItemSeparatorComponent={() => <ThemedView style={{ height: 12 }} />}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={palette.primary}
+              colors={[palette.primary]}
+            />
+          }
           ListEmptyComponent={
             <ThemedView style={styles.emptyState}>
               {searchQuery.length > 0 ? (
@@ -640,6 +744,30 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  errorBanner: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 8,
+  },
+  errorText: {
+    fontSize: 13,
+    fontFamily: 'Inter-Medium',
+    textAlign: 'center',
+  },
+  loadingState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    textAlign: 'center',
   },
   modalOverlay: {
     flex: 1,

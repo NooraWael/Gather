@@ -21,6 +21,9 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
+import type { EventStatus } from '@/constants/types';
+import { createEvent } from '@/services/event';
+import { getCurrentUserId } from '@/services/user';
 
 interface CreateEventData {
   title: string;
@@ -104,7 +107,13 @@ export default function AddEventScreen() {
       }
     }
 
-    if (eventData.date < new Date()) {
+    const combinedDate = new Date(eventData.date);
+    combinedDate.setHours(eventData.time.getHours());
+    combinedDate.setMinutes(eventData.time.getMinutes());
+    combinedDate.setSeconds(0);
+    combinedDate.setMilliseconds(0);
+
+    if (combinedDate <= new Date()) {
       newErrors.date = 'Event date must be in the future';
     }
 
@@ -125,6 +134,23 @@ export default function AddEventScreen() {
       eventDateTime.setHours(eventData.time.getHours());
       eventDateTime.setMinutes(eventData.time.getMinutes());
 
+      const userId = await getCurrentUserId();
+      if (!userId) {
+        setIsLoading(false);
+        Alert.alert(
+          'Sign in required',
+          'Please sign in to create events.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Sign in', onPress: () => router.push('/auth/login') },
+          ]
+        );
+        return;
+      }
+
+      const fallbackImage = 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=900&q=80';
+      const hasRemoteImage = eventData.image_url && eventData.image_url.startsWith('http');
+
       const eventPayload = {
         title: eventData.title.trim(),
         description: eventData.description.trim(),
@@ -132,16 +158,14 @@ export default function AddEventScreen() {
         location: eventData.location.trim(),
         capacity: parseInt(eventData.capacity),
         is_paid: eventData.is_paid,
-        phone_number: eventData.is_paid ? eventData.phone_number.trim() : null,
+        phone_number: eventData.is_paid ? eventData.phone_number.trim() : undefined,
         category: eventData.category,
-        image_url: eventData.image_url || 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=900&q=80', // Default image
-        status: 'pending', // Will be reviewed by admin
+        image_url: hasRemoteImage ? eventData.image_url : fallbackImage,
+        status: 'pending' as EventStatus, // Will be reviewed by admin
+        created_by: userId,
       };
 
-      // Simulate API call - Replace with actual Supabase insert
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      console.log('Event created:', eventPayload);
+      await createEvent(eventPayload);
 
       Alert.alert(
         'Event Submitted!',
@@ -156,7 +180,10 @@ export default function AddEventScreen() {
 
     } catch (error) {
       console.error('Error creating event:', error);
-      Alert.alert('Error', 'Failed to create event. Please try again.');
+      const message = error instanceof Error && error.message
+        ? error.message
+        : 'Failed to create event. Please try again.';
+      Alert.alert('Error', message);
     } finally {
       setIsLoading(false);
     }

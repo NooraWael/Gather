@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -16,90 +16,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import type { EventWithRegistrations, Registration, RegistrationStatus } from '@/constants/types';
-
-// Mock current user ID - replace with actual auth
-const CURRENT_USER_ID = 'user123';
-
-// Mock data
-const mockEvents: { [key: string]: EventWithRegistrations } = {
-  '1': {
-    id: '1',
-    title: 'Community Food Festival',
-    description: 'Join us for an amazing community food festival featuring local vendors, live music, and activities for the whole family.',
-    date_time: '2025-10-15T12:00:00Z',
-    location: 'Central Park, Main Pavilion Area',
-    capacity: 200,
-    is_paid: true,
-    image_url: 'https://images.unsplash.com/photo-1528716321680-815a8cdb8cbe?auto=format&fit=crop&w=900&q=80',
-    category: 'Food & Drink',
-    status: 'accepted',
-    phone_number: '+973-1234-5678',
-    created_by: 'user123', // This user's event
-    created_at: '2025-09-20T10:00:00Z',
-    creator: {
-      id: 'user123',
-      name: 'Sarah Johnson',
-      email: 'sarah@example.com',
-      created_at: '2025-08-15T10:00:00Z',
-    },
-    registrations: [
-      {
-        id: 'reg1',
-        event_id: '1',
-        user_id: 'user456',
-        status: 'registered',
-        created_at: '2025-09-21T10:00:00Z',
-      },
-      {
-        id: 'reg2',
-        event_id: '1',
-        user_id: 'user789',
-        status: 'pending_payment',
-        created_at: '2025-09-22T10:00:00Z',
-      },
-      {
-        id: 'reg3',
-        event_id: '1',
-        user_id: 'user101',
-        status: 'approved',
-        created_at: '2025-09-20T15:30:00Z',
-      },
-      {
-        id: 'reg4',
-        event_id: '1',
-        user_id: 'user102',
-        status: 'approved',
-        created_at: '2025-09-19T09:15:00Z',
-      }
-    ],
-    current_attendees: 87,
-    user_registration: undefined,
-  },
-  '2': {
-    id: '2',
-    title: 'Book Club: Local Authors',
-    description: 'A cozy book club meeting focusing on works by local authors.',
-    date_time: '2025-10-18T18:30:00Z',
-    location: 'Corner Coffee Shop, Downtown',
-    capacity: 15,
-    is_paid: false,
-    image_url: 'https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?auto=format&fit=crop&w=900&q=80',
-    category: 'Literature',
-    status: 'accepted',
-    created_by: 'user456', // Not this user's event
-    created_at: '2025-09-18T10:00:00Z',
-    creator: {
-      id: 'user456',
-      name: 'Mohammed Hassan',
-      email: 'mohammed@example.com',
-      created_at: '2025-07-10T10:00:00Z',
-    },
-    registrations: [],
-    current_attendees: 12,
-    user_registration: undefined,
-  },
-};
+import type { EventWithRegistrations } from '@/constants/types';
+import { getEventWithRegistrations, updateEvent } from '@/services/event';
+import { registerForEvent } from '@/services/registration';
+import { getCurrentUserId } from '@/services/user';
 
 // Component for managing your own event
 const OwnEventDetail = ({ event, onEventUpdate }: { event: EventWithRegistrations, onEventUpdate: (event: EventWithRegistrations) => void }) => {
@@ -108,6 +28,7 @@ const OwnEventDetail = ({ event, onEventUpdate }: { event: EventWithRegistration
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [editedEvent, setEditedEvent] = useState(event);
+  const [isSaving, setIsSaving] = useState(false);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -130,13 +51,32 @@ const OwnEventDetail = ({ event, onEventUpdate }: { event: EventWithRegistration
 
   const handleSaveChanges = async () => {
     try {
-      // Simulate API call to update event
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      onEventUpdate(editedEvent);
+      setIsSaving(true);
+
+      const updates = {
+        title: editedEvent.title.trim(),
+        description: editedEvent.description,
+        location: editedEvent.location,
+      };
+
+      const updated = await updateEvent(event.id, updates);
+
+      if (updated) {
+        onEventUpdate(updated);
+        setEditedEvent(updated);
+      } else {
+        const fallback = { ...event, ...updates };
+        onEventUpdate(fallback);
+        setEditedEvent(fallback);
+      }
+
       setIsEditing(false);
       Alert.alert('Success', 'Event updated successfully!');
     } catch (error) {
+      console.error('Failed to update event:', error);
       Alert.alert('Error', 'Failed to update event. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -244,9 +184,12 @@ const OwnEventDetail = ({ event, onEventUpdate }: { event: EventWithRegistration
         {isEditing && (
           <Pressable
             onPress={handleSaveChanges}
-            style={[styles.saveButton, { backgroundColor: palette.primary }]}
+            style={[styles.saveButton, { backgroundColor: palette.primary, opacity: isSaving ? 0.7 : 1 }]}
+            disabled={isSaving}
           >
-            <ThemedText style={styles.saveButtonText}>Save Changes</ThemedText>
+            <ThemedText style={styles.saveButtonText}>
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </ThemedText>
           </Pressable>
         )}
 
@@ -310,35 +253,77 @@ const OwnEventDetail = ({ event, onEventUpdate }: { event: EventWithRegistration
 // Main Event Detail Component
 export default function EventDetailPage() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const eventId = Array.isArray(params.id) ? params.id[0] : params.id ?? null;
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
   
   const [event, setEvent] = useState<EventWithRegistrations | null>(null);
   const [loading, setLoading] = useState(true);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
-    const fetchEvent = async () => {
-      try {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        if (id && mockEvents[id]) {
-          setEvent(mockEvents[id]);
-        } else {
-          Alert.alert('Error', 'Event not found');
-          router.back();
-        }
-      } catch (error) {
-        Alert.alert('Error', 'Failed to load event details');
-        router.back();
-      } finally {
-        setLoading(false);
-      }
+    return () => {
+      isMountedRef.current = false;
     };
+  }, []);
 
-    fetchEvent();
-  }, [id]);
+  const loadEvent = useCallback(
+    async ({ showLoader = true }: { showLoader?: boolean } = {}) => {
+      if (!eventId) {
+        setError('Missing event identifier.');
+        if (showLoader) {
+          setLoading(false);
+        }
+        return;
+      }
+
+      if (showLoader) {
+        setLoading(true);
+      }
+
+      try {
+        const resolvedUserId = await getCurrentUserId();
+        if (!isMountedRef.current) return;
+
+        setUserId(resolvedUserId ?? null);
+
+        const eventData = await getEventWithRegistrations(eventId, resolvedUserId ?? undefined);
+        if (!isMountedRef.current) return;
+
+        if (!eventData) {
+          setError('Event not found.');
+          Alert.alert('Event not found', 'This event may have been removed.', [
+            { text: 'OK', onPress: () => router.back() },
+          ]);
+          return;
+        }
+
+        setEvent(eventData);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to load event details:', err);
+        if (!isMountedRef.current) return;
+
+        setError('Failed to load event details.');
+        Alert.alert('Error', 'Failed to load event details.', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      } finally {
+        if (isMountedRef.current && showLoader) {
+          setLoading(false);
+        }
+      }
+    },
+    [eventId, router],
+  );
+
+  useEffect(() => {
+    loadEvent();
+  }, [loadEvent]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -376,6 +361,9 @@ export default function EventDetailPage() {
           return 'Registered';
       }
     }
+    if (!userId) {
+      return 'Sign in to register';
+    }
     return event.is_paid ? 'Register & Pay' : 'Register for Free';
   };
 
@@ -397,39 +385,60 @@ export default function EventDetailPage() {
     return palette.primary;
   };
 
-  const handleRegister = async () => {
+  const handleRegister = useCallback(async () => {
     if (!event || event.user_registration) return;
-    
+
+    if (!userId) {
+      Alert.alert(
+        'Sign in required',
+        'Please sign in to register for events.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign in', onPress: () => router.push('/auth/login') },
+        ],
+      );
+      return;
+    }
+
+    const isPaidEvent = event.is_paid;
     setIsRegistering(true);
-    
+
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const newRegistration: Registration = {
-        id: `reg_${Date.now()}`,
-        event_id: event.id,
-        user_id: CURRENT_USER_ID,
-        status: event.is_paid ? 'pending_payment' : 'registered',
-        created_at: new Date().toISOString(),
-      };
+      const registration = await registerForEvent(
+        event.id,
+        userId,
+        isPaidEvent ? 'pending_payment' : 'registered',
+      );
 
-      setEvent(prev => prev ? {
-        ...prev,
-        user_registration: newRegistration,
-        current_attendees: prev.current_attendees + 1,
-      } : null);
+      if (!registration) {
+        throw new Error('Registration failed');
+      }
 
-      const message = event.is_paid 
+      setEvent((prev) => {
+        if (!prev) return prev;
+        const updatedRegistrations = [...prev.registrations, registration];
+        return {
+          ...prev,
+          registrations: updatedRegistrations,
+          user_registration: registration,
+          current_attendees: prev.current_attendees + 1,
+        };
+      });
+
+      const message = isPaidEvent
         ? 'Registration successful! The event organizer will review your registration and payment manually.'
         : 'Registration successful! You are now registered for this event.';
-      
+
       Alert.alert('Registration Successful!', message, [{ text: 'OK' }]);
-    } catch (error) {
+
+      await loadEvent({ showLoader: false });
+    } catch (err) {
+      console.error('Failed to register for event:', err);
       Alert.alert('Error', 'Failed to register for event. Please try again.');
     } finally {
       setIsRegistering(false);
     }
-  };
+  }, [event, loadEvent, router, userId]);
 
   if (loading) {
     return (
@@ -458,8 +467,12 @@ export default function EventDetailPage() {
     );
   }
 
-  const isOwnEvent = event.created_by === CURRENT_USER_ID;
-  const canRegister = !event.user_registration && event.current_attendees < event.capacity && event.status === 'accepted' && !isOwnEvent;
+  const isOwnEvent = userId ? event.created_by === userId : false;
+  const canRegister =
+    !event.user_registration &&
+    event.current_attendees < event.capacity &&
+    event.status === 'accepted' &&
+    !isOwnEvent;
 
   return (
     <SafeAreaView 

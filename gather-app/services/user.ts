@@ -33,6 +33,43 @@ export interface UserRegistrationWithEvent {
   };
 }
 
+export async function getCurrentUserId(): Promise<string | null> {
+  try {
+    // Get email from AsyncStorage
+    const storedUserInfo = await AuthStorage.getUserInfo();
+    
+    if (!storedUserInfo?.email) {
+      console.log('No stored user email found');
+      return null;
+    }
+    
+    console.log('Looking up user ID by email:', storedUserInfo.email);
+    
+    // Look up the user ID from public.users table by email
+    const { data, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', storedUserInfo.email)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching user ID:', error);
+      return null;
+    }
+
+    if (!data) {
+      console.log('No user found with email:', storedUserInfo.email);
+      return null;
+    }
+
+    console.log('Found user ID:', data.id);
+    return data.id;
+  } catch (error) {
+    console.error('Error in getCurrentUserId:', error);
+    return null;
+  }
+}
+
 // Get current user profile
 export async function getCurrentUserProfile(): Promise<UserProfile | null> {
   let { data: { user } } = await supabase.auth.getUser();

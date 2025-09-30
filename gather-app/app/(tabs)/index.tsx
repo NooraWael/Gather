@@ -1,15 +1,24 @@
-import React, { useState } from 'react';
-import { FlatList, Keyboard, StyleSheet, ScrollView, Pressable } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Keyboard,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+} from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
 import EventCard from '@/components/events/EventCard';
 import SearchBar from '@/components/events/SearchBar';
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
-import type { EventCardProps } from '@/constants/types';
+import type { EventCardProps, EventWithRegistrations } from '@/constants/types';
 import TopNavigation from '@/components/header/topHeader';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/components/useColorScheme';
+import { getEvents } from '@/services/event';
 
 interface Category {
   id: string;
@@ -32,90 +41,97 @@ const CATEGORIES: Category[] = [
   { id: 'shopping', name: 'Shopping', icon: 'shopping-bag' },
 ];
 
-const mockEvents: EventCardProps[] = [
-  {
-    id: '1',
-    title: 'Community Food Festival',
-    date: 'Oct 15, 2025',
-    time: '12:00 PM',
-    location: 'Central Park',
-    capacity: 200,
-    attendees: 87,
-    price: 'Free',
-    image: 'https://images.unsplash.com/photo-1528716321680-815a8cdb8cbe?auto=format&fit=crop&w=900&q=80',
-    category: 'Food & Drink',
-  },
-  {
-    id: '2',
-    title: 'Book Club: Local Authors',
-    date: 'Oct 18, 2025',
-    time: '6:30 PM',
-    location: 'Corner Coffee Shop',
-    capacity: 15,
-    attendees: 12,
-    price: 'Free',
-    image: 'https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?auto=format&fit=crop&w=900&q=80',
-    category: 'Literature',
-  },
-  {
-    id: '3',
-    title: 'Morning Yoga in the Park',
-    date: 'Oct 20, 2025',
-    time: '7:00 AM',
-    location: 'Riverside Park',
-    capacity: 25,
-    attendees: 18,
-    price: 'Paid',
-    image: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=900&q=80',
-    category: 'Health & Wellness',
-  },
-  {
-    id: '4',
-    title: 'Weekly Farmers Market',
-    date: 'Oct 22, 2025',
-    time: '8:00 AM',
-    location: 'Town Square',
-    capacity: 500,
-    attendees: 234,
-    price: 'Free',
-    image: 'https://images.unsplash.com/photo-1472141521881-95dd6f9ae7f6?auto=format&fit=crop&w=900&q=80',
-    category: 'Shopping',
-  },
-  {
-    id: '5',
-    title: 'Jazz Night at The Lounge',
-    date: 'Oct 25, 2025',
-    time: '8:00 PM',
-    location: 'Blue Note Cafe',
-    capacity: 80,
-    attendees: 45,
-    price: 'Paid',
-    image: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=900&q=80',
-    category: 'Music',
-  },
-  {
-    id: '6',
-    title: 'Tech Startup Meetup',
-    date: 'Oct 28, 2025',
-    time: '6:00 PM',
-    location: 'Innovation Hub',
-    capacity: 100,
-    attendees: 67,
-    price: 'Free',
-    image: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=900&q=80',
-    category: 'Technology',
-  },
-];
+const formatEventDate = (dateString: string): string => {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
+const formatEventTime = (dateString: string): string => {
+  return new Date(dateString).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+};
+
+const toEventCardProps = (event: EventWithRegistrations): EventCardProps => ({
+  id: event.id,
+  title: event.title,
+  date: formatEventDate(event.date_time),
+  time: formatEventTime(event.date_time),
+  location: event.location,
+  capacity: event.capacity,
+  attendees: event.current_attendees,
+  price: event.is_paid ? 'Paid' : 'Free',
+  image: event.image_url,
+  category: event.category,
+});
 
 export default function EventsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
   
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [events, setEvents] = useState<EventCardProps[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
 
-  const filteredEvents = selectedCategory === 'all' 
-    ? mockEvents 
-    : mockEvents.filter(event => event.category === CATEGORIES.find(cat => cat.id === selectedCategory)?.name);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const loadEvents = useCallback(async () => {
+    try {
+      setError(null);
+      const data = await getEvents();
+      if (!isMountedRef.current) return;
+      setEvents(data.map(toEventCardProps));
+    } catch (err) {
+      console.error('Failed to load events:', err);
+      if (!isMountedRef.current) return;
+      setError('Unable to load events right now.');
+    }
+  }, []);
+
+  useEffect(() => {
+    const fetchEvents = async () => {
+      setLoading(true);
+      await loadEvents();
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
+    };
+
+    fetchEvents();
+  }, [loadEvents]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadEvents();
+    if (isMountedRef.current) {
+      setRefreshing(false);
+    }
+  }, [loadEvents]);
+
+  const filteredEvents = useMemo(() => {
+    if (selectedCategory === 'all') {
+      return events;
+    }
+
+    const selectedCategoryName = CATEGORIES.find((cat) => cat.id === selectedCategory)?.name;
+    if (!selectedCategoryName) {
+      return events;
+    }
+
+    return events.filter((event) => event.category === selectedCategoryName);
+  }, [events, selectedCategory]);
 
   const CategoryFilterItem = ({ category, isSelected }: { category: Category; isSelected: boolean }) => (
     <Pressable
@@ -173,6 +189,14 @@ export default function EventsScreen() {
         data={filteredEvents}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={palette.primary}
+            colors={[palette.primary]}
+          />
+        }
         ListHeaderComponent={
           <View>
             <SearchBar />
@@ -185,7 +209,7 @@ export default function EventsScreen() {
                 {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} found
               </Text>
             </View>
-  
+
           </View>
         }
         renderItem={({ item }) => (
@@ -200,13 +224,29 @@ export default function EventsScreen() {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Feather name="calendar" size={48} color={palette.muted} />
-            <Text style={[styles.emptyTitle, { color: palette.text }]}>
-              No events found
-            </Text>
-            <Text style={[styles.emptySubtitle, { color: palette.muted }]}>
-              Try selecting a different category or check back later
-            </Text>
+            {loading ? (
+              <>
+                <ActivityIndicator size="large" color={palette.primary} />
+                <Text style={[styles.emptyTitle, { color: palette.text }]}>
+                  Loading events...
+                </Text>
+                <Text style={[styles.emptySubtitle, { color: palette.muted }]}>
+                  Hang tight while we fetch events nearby
+                </Text>
+              </>
+            ) : (
+              <>
+                <Feather name="calendar" size={48} color={palette.muted} />
+                <Text style={[styles.emptyTitle, { color: palette.text }]}>
+                  {error ? 'Unable to load events' : 'No events found'}
+                </Text>
+                <Text style={[styles.emptySubtitle, { color: palette.muted }]}>
+                  {error
+                    ? 'Pull to refresh or try again in a moment.'
+                    : 'Try selecting a different category or check back later'}
+                </Text>
+              </>
+            )}
           </View>
         }
       />

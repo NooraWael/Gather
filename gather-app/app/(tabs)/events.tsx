@@ -1,85 +1,183 @@
-import { FlatList, StyleSheet, TouchableOpacity } from 'react-native';
-import { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  TouchableOpacity,
+} from 'react-native';
 import MyEventCard from '@/components/events/MyEventCard';
 import { Text, View } from '@/components/Themed';
 import Colors from '@/constants/Colors';
-import type { MyEventCardProps } from '@/constants/types';
+import type {
+  EventWithRegistrations,
+  MyEventCardProps,
+  RegistrationStatus,
+} from '@/constants/types';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/components/useColorScheme';
 import SimpleTopNavigation from '@/components/header/topHeaderMyEvents';
-
-// Mock data for created events
-const mockCreatedEvents: MyEventCardProps[] = [
-  {
-    id: '1',
-    title: 'Community Food Festival',
-    date: 'Oct 15, 2025',
-    time: '12:00 PM',
-    location: 'Central Park',
-    capacity: 200,
-    attendees: 87,
-    price: 'Free',
-    image: 'https://images.unsplash.com/photo-1528716321680-815a8cdb8cbe?auto=format&fit=crop&w=900&q=80',
-    category: 'Food & Drink',
-    isCreated: true,
-    status: 'accepted',
-  },
-  {
-    id: '2',
-    title: 'Morning Yoga in the Park',
-    date: 'Oct 20, 2025',
-    time: '7:00 AM',
-    location: 'Riverside Park',
-    capacity: 25,
-    attendees: 18,
-    price: 'Paid',
-    image: 'https://images.unsplash.com/photo-1518611012118-696072aa579a?auto=format&fit=crop&w=900&q=80',
-    category: 'Health & Wellness',
-    isCreated: true,
-    status: 'pending',
-  },
-];
-
-// Mock data for joined events
-const mockJoinedEvents: MyEventCardProps[] = [
-  {
-    id: '3',
-    title: 'Book Club: Local Authors',
-    date: 'Oct 18, 2025',
-    time: '6:30 PM',
-    location: 'Corner Coffee Shop',
-    capacity: 15,
-    attendees: 12,
-    price: 'Free',
-    image: 'https://images.unsplash.com/photo-1515378791036-0648a3ef77b2?auto=format&fit=crop&w=900&q=80',
-    category: 'Literature',
-    isCreated: false,
-    status: 'registered',
-  },
-  {
-    id: '4',
-    title: 'Weekly Farmers Market',
-    date: 'Oct 22, 2025',
-    time: '8:00 AM',
-    location: 'Town Square',
-    capacity: 500,
-    attendees: 234,
-    price: 'Free',
-    image: 'https://images.unsplash.com/photo-1472141521881-95dd6f9ae7f6?auto=format&fit=crop&w=900&q=80',
-    category: 'Shopping',
-    isCreated: false,
-    status: 'pending approval',
-  },
-];
+import { getEventsCreatedByUser, getJoinedEventsForUser } from '@/services/event';
+import { getCurrentUserId } from '@/services/user';
 
 type TabType = 'created' | 'joined';
+
+const formatEventDate = (dateString: string): string => {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
+const formatEventTime = (dateString: string): string => {
+  return new Date(dateString).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+};
+
+const mapJoinedRegistrationStatus = (
+  status?: RegistrationStatus,
+): MyEventCardProps['status'] => {
+  if (!status) return 'pending approval';
+
+  if (status === 'approved') {
+    return 'registered';
+  }
+
+  return 'pending approval';
+};
+
+const toCreatedEventCard = (event: EventWithRegistrations): MyEventCardProps => ({
+  id: event.id,
+  title: event.title,
+  date: formatEventDate(event.date_time),
+  time: formatEventTime(event.date_time),
+  location: event.location,
+  capacity: event.capacity,
+  attendees: event.current_attendees,
+  price: event.is_paid ? 'Paid' : 'Free',
+  image: event.image_url,
+  category: event.category,
+  isCreated: true,
+  status: event.status,
+});
+
+const toJoinedEventCard = (
+  event: EventWithRegistrations,
+): MyEventCardProps | null => {
+  if (!event.user_registration) {
+    return null;
+  }
+
+  return {
+    id: event.id,
+    title: event.title,
+    date: formatEventDate(event.date_time),
+    time: formatEventTime(event.date_time),
+    location: event.location,
+    capacity: event.capacity,
+    attendees: event.current_attendees,
+    price: event.is_paid ? 'Paid' : 'Free',
+    image: event.image_url,
+    category: event.category,
+    isCreated: false,
+    status: mapJoinedRegistrationStatus(event.user_registration.status),
+  };
+};
 
 export default function MyEventsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const palette = Colors[colorScheme];
   const [activeTab, setActiveTab] = useState<TabType>('created');
+  const [createdEvents, setCreatedEvents] = useState<MyEventCardProps[]>([]);
+  const [joinedEvents, setJoinedEvents] = useState<MyEventCardProps[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
 
-  const currentEvents = activeTab === 'created' ? mockCreatedEvents : mockJoinedEvents;
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+const loadEvents = useCallback(async () => {
+  try {
+    console.log('Loading events started...');
+    setError(null);
+
+    let resolvedUserId = userId;
+    if (!resolvedUserId) {
+      console.log('Getting current user ID...');
+      resolvedUserId = await getCurrentUserId();
+      console.log('Got user ID:', resolvedUserId);
+
+      if (!isMountedRef.current) return;
+
+      if (!resolvedUserId) {
+        console.log('No user ID found');
+        setError('Please sign in to manage your events.');
+        setCreatedEvents([]);
+        setJoinedEvents([]);
+        return;
+      }
+
+      setUserId(resolvedUserId);
+    }
+
+    console.log('Fetching events for user:', resolvedUserId);
+    const [created, joined] = await Promise.all([
+      getEventsCreatedByUser(resolvedUserId),
+      getJoinedEventsForUser(resolvedUserId),
+    ]);
+    
+    console.log('Created events:', created.length);
+    console.log('Joined events:', joined.length);
+
+    if (!isMountedRef.current) return;
+
+    setCreatedEvents(created.map(toCreatedEventCard));
+    setJoinedEvents(
+      joined
+        .map(toJoinedEventCard)
+        .filter((event): event is MyEventCardProps => event !== null),
+    );
+  } catch (err) {
+    console.error('Failed to load user events:', err);
+    if (!isMountedRef.current) return;
+    setError('Unable to load your events right now.');
+  }
+}, [userId]);
+
+  useEffect(() => {
+    const fetchEvents = async () => {
+      setLoading(true);
+      await loadEvents();
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
+    };
+
+    fetchEvents();
+  }, [loadEvents]);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadEvents();
+    if (isMountedRef.current) {
+      setRefreshing(false);
+    }
+  }, [loadEvents]);
+
+  const currentEvents = useMemo(
+    () => (activeTab === 'created' ? createdEvents : joinedEvents),
+    [activeTab, createdEvents, joinedEvents],
+  );
 
   const TabButton = ({ 
     title, 
@@ -133,6 +231,14 @@ export default function MyEventsScreen() {
         data={currentEvents}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={palette.primary}
+            colors={[palette.primary]}
+          />
+        }
         ListHeaderComponent={
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: palette.secondary }]}>
@@ -141,16 +247,43 @@ export default function MyEventsScreen() {
                 : `${currentEvents.length} Joined Events`
               }
             </Text>
+            {error && !loading && currentEvents.length > 0 && (
+              <Text style={styles.errorMessage}>
+                {error}
+              </Text>
+            )}
           </View>
         }
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={[styles.emptyText, { color: palette.muted }]}>
-              {activeTab === 'created' 
-                ? "You haven't created any events yet" 
-                : "You haven't joined any events yet"
-              }
-            </Text>
+            {loading ? (
+              <>
+                <ActivityIndicator size="large" color={palette.primary} />
+                <Text style={[styles.emptyText, { color: palette.text }]}>
+                  Loading your events...
+                </Text>
+                <Text style={[styles.emptyDescription, { color: palette.muted }]}>
+                  Checking for the latest updates
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.emptyText, { color: palette.text }]}>
+                  {error
+                    ? error
+                    : activeTab === 'created'
+                      ? "You haven't created any events yet"
+                      : "You haven't joined any events yet"}
+                </Text>
+                {!error && (
+                  <Text style={[styles.emptyDescription, { color: palette.muted }]}>
+                    {activeTab === 'created'
+                      ? 'Tap the plus button to host your first event.'
+                      : 'Explore events and register to see them here.'}
+                  </Text>
+                )}
+              </>
+            )}
           </View>
         }
         renderItem={({ item }) => (
@@ -199,12 +332,24 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: 'Poppins-SemiBold',
   },
+  errorMessage: {
+    marginTop: 4,
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#EF4444',
+  },
   emptyState: {
     padding: 32,
     alignItems: 'center',
   },
   emptyText: {
     fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    textAlign: 'center',
+  },
+  emptyDescription: {
+    marginTop: 8,
+    fontSize: 14,
     fontFamily: 'Inter-Regular',
     textAlign: 'center',
   },
