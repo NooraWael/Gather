@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -8,16 +8,26 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  TouchableOpacity,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import {
+  BottomSheetModal,
+  BottomSheetModalProvider,
+} from "@gorhom/bottom-sheet";
 
 import { Text as ThemedText, View as ThemedView } from "@/components/Themed";
 import Colors from "@/constants/Colors";
 import { useColorScheme } from "@/components/useColorScheme";
 import type { RegisterCredentials, AuthError } from "@/constants/auth";
 import { signUp as signUpService } from "@/services/auth";
+import CountryPickerSheet, {
+  GCC_COUNTRIES,
+  Country,
+} from "@/components/CountryPickerSheet";
 
 export default function RegisterScreen() {
   const router = useRouter();
@@ -35,6 +45,19 @@ export default function RegisterScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState<AuthError | null>(null);
+  const [selectedCountry, setSelectedCountry] = useState<Country>(
+    GCC_COUNTRIES[0]
+  );
+
+  const countryPickerRef = useRef<BottomSheetModal>(null);
+
+  const openCountryPicker = () => {
+    countryPickerRef.current?.present();
+  };
+
+  const handleSelectCountry = (country: Country) => {
+    setSelectedCountry(country);
+  };
 
   const validateForm = (): boolean => {
     // Name validation
@@ -72,10 +95,11 @@ export default function RegisterScreen() {
       return false;
     }
 
-    const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+    // Validate phone number (country code is separate)
+    const phoneRegex = /^\d{7,15}$/;
     if (!phoneRegex.test(credentials.phone.replace(/\s+/g, ""))) {
       setErrors({
-        message: "Please enter a valid phone number with country code",
+        message: "Please enter a valid phone number (7-15 digits)",
         field: "phone",
       });
       return false;
@@ -134,7 +158,12 @@ export default function RegisterScreen() {
     setIsLoading(true);
 
     try {
-      const result = await signUpService(credentials);
+      // Combine country code with phone number
+      const fullPhoneNumber = `${selectedCountry.callingCode}${credentials.phone}`;
+      const result = await signUpService({
+        ...credentials,
+        phone: fullPhoneNumber,
+      });
 
       if (!result || !result.needsVerification) {
         setErrors({
@@ -147,7 +176,7 @@ export default function RegisterScreen() {
       router.push({
         pathname: "/auth/code",
         params: {
-          phone: credentials.phone,
+          phone: fullPhoneNumber,
           email: credentials.email,
           name: credentials.name,
           type: "signup",
@@ -193,353 +222,408 @@ export default function RegisterScreen() {
   };
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: palette.background }]}
-      edges={["top", "left", "right"]}
-    >
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <BottomSheetModalProvider>
+        <SafeAreaView
+          style={[styles.container, { backgroundColor: palette.background }]}
+          edges={["top", "left", "right"]}
         >
-          {/* Header */}
-          <ThemedView style={styles.header}>
-            <Pressable
-              onPress={navigateToLogin}
-              style={({ pressed }) => [
-                styles.backButton,
-                pressed && { backgroundColor: palette.muted + "20" },
-              ]}
-              disabled={isLoading}
+          <KeyboardAvoidingView
+            style={styles.keyboardView}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
+            <ScrollView
+              contentContainerStyle={styles.scrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
-              <Feather name="arrow-left" size={24} color={palette.secondary} />
-            </Pressable>
-
-            <ThemedView style={styles.headerContent}>
-              <Text style={[styles.logo, { color: palette.primary }]}>
-                Join Gather
-              </Text>
-              <ThemedText style={[styles.subtitle, { color: palette.muted }]}>
-                Create your account to start discovering events
-              </ThemedText>
-            </ThemedView>
-          </ThemedView>
-
-          {/* Registration Form */}
-          <ThemedView style={styles.form}>
-            {/* Name Input */}
-            <ThemedView style={styles.inputGroup}>
-              <ThemedText style={[styles.label, { color: palette.secondary }]}>
-                Full Name
-              </ThemedText>
-              <ThemedView
-                style={[
-                  styles.inputContainer,
-                  {
-                    borderColor: getFieldError("name")
-                      ? "#EF4444"
-                      : palette.muted + "40",
-                    backgroundColor: palette.surface,
-                  },
-                ]}
-              >
-                <Feather
-                  name="user"
-                  size={20}
-                  color={palette.muted}
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  style={[styles.input, { color: palette.primary }]}
-                  value={credentials.name}
-                  onChangeText={(text) => {
-                    setCredentials((prev) => ({ ...prev, name: text }));
-                    if (errors?.field === "name") setErrors(null);
-                  }}
-                  placeholder="Enter your full name"
-                  placeholderTextColor={palette.muted}
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                  editable={!isLoading}
-                />
-              </ThemedView>
-              {getFieldError("name") && (
-                <ThemedText style={styles.errorText}>
-                  {getFieldError("name")}
-                </ThemedText>
-              )}
-            </ThemedView>
-
-            {/* Email Input */}
-            <ThemedView style={styles.inputGroup}>
-              <ThemedText style={[styles.label, { color: palette.secondary }]}>
-                Email Address
-              </ThemedText>
-              <ThemedView
-                style={[
-                  styles.inputContainer,
-                  {
-                    borderColor: getFieldError("email")
-                      ? "#EF4444"
-                      : palette.muted + "40",
-                    backgroundColor: palette.surface,
-                  },
-                ]}
-              >
-                <Feather
-                  name="mail"
-                  size={20}
-                  color={palette.muted}
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  style={[styles.input, { color: palette.primary }]}
-                  value={credentials.email}
-                  onChangeText={(text) => {
-                    setCredentials((prev) => ({ ...prev, email: text }));
-                    if (errors?.field === "email") setErrors(null);
-                  }}
-                  placeholder="Enter your email"
-                  placeholderTextColor={palette.muted}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!isLoading}
-                />
-              </ThemedView>
-              {getFieldError("email") && (
-                <ThemedText style={styles.errorText}>
-                  {getFieldError("email")}
-                </ThemedText>
-              )}
-            </ThemedView>
-
-            {/* Phone Input */}
-            <ThemedView style={styles.inputGroup}>
-              <ThemedText style={[styles.label, { color: palette.secondary }]}>
-                Phone Number
-              </ThemedText>
-              <ThemedView
-                style={[
-                  styles.inputContainer,
-                  {
-                    borderColor: getFieldError("phone")
-                      ? "#EF4444"
-                      : palette.muted + "40",
-                    backgroundColor: palette.surface,
-                  },
-                ]}
-              >
-                <Feather
-                  name="phone"
-                  size={20}
-                  color={palette.muted}
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  style={[styles.input, { color: palette.primary }]}
-                  value={credentials.phone}
-                  onChangeText={(text) => {
-                    setCredentials((prev) => ({ ...prev, phone: text }));
-                    if (errors?.field === "phone") setErrors(null);
-                  }}
-                  placeholder="+1234567890"
-                  placeholderTextColor={palette.muted}
-                  keyboardType="phone-pad"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!isLoading}
-                />
-              </ThemedView>
-              {getFieldError("phone") && (
-                <ThemedText style={styles.errorText}>
-                  {getFieldError("phone")}
-                </ThemedText>
-              )}
-            </ThemedView>
-
-            {/* Password Input */}
-            <ThemedView style={styles.inputGroup}>
-              <ThemedText style={[styles.label, { color: palette.secondary }]}>
-                Password
-              </ThemedText>
-              <ThemedView
-                style={[
-                  styles.inputContainer,
-                  {
-                    borderColor: getFieldError("password")
-                      ? "#EF4444"
-                      : palette.muted + "40",
-                    backgroundColor: palette.surface,
-                  },
-                ]}
-              >
-                <Feather
-                  name="lock"
-                  size={20}
-                  color={palette.muted}
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  style={[styles.input, { color: palette.primary }]}
-                  value={credentials.password}
-                  onChangeText={(text) => {
-                    setCredentials((prev) => ({ ...prev, password: text }));
-                    if (errors?.field === "password") setErrors(null);
-                  }}
-                  placeholder="Create a strong password"
-                  placeholderTextColor={palette.muted}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!isLoading}
-                />
+              {/* Header */}
+              <ThemedView style={styles.header}>
                 <Pressable
-                  onPress={() => setShowPassword(!showPassword)}
-                  style={styles.passwordToggle}
+                  onPress={navigateToLogin}
+                  style={({ pressed }) => [
+                    styles.backButton,
+                    pressed && { backgroundColor: palette.muted + "20" },
+                  ]}
                   disabled={isLoading}
                 >
                   <Feather
-                    name={showPassword ? "eye-off" : "eye"}
-                    size={20}
-                    color={palette.muted}
+                    name="arrow-left"
+                    size={24}
+                    color={palette.secondary}
                   />
                 </Pressable>
-              </ThemedView>
-              {getFieldError("password") && (
-                <ThemedText style={styles.errorText}>
-                  {getFieldError("password")}
-                </ThemedText>
-              )}
-            </ThemedView>
 
-            {/* Confirm Password Input */}
-            <ThemedView style={styles.inputGroup}>
-              <ThemedText style={[styles.label, { color: palette.secondary }]}>
-                Confirm Password
-              </ThemedText>
-              <ThemedView
-                style={[
-                  styles.inputContainer,
-                  {
-                    borderColor: getFieldError("confirmPassword")
-                      ? "#EF4444"
-                      : palette.muted + "40",
-                    backgroundColor: palette.surface,
-                  },
-                ]}
-              >
-                <Feather
-                  name="lock"
-                  size={20}
-                  color={palette.muted}
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  style={[styles.input, { color: palette.primary }]}
-                  value={credentials.confirmPassword}
-                  onChangeText={(text) => {
-                    setCredentials((prev) => ({
-                      ...prev,
-                      confirmPassword: text,
-                    }));
-                    if (errors?.field === "confirmPassword") setErrors(null);
-                  }}
-                  placeholder="Confirm your password"
-                  placeholderTextColor={palette.muted}
-                  secureTextEntry={!showConfirmPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!isLoading}
-                />
+                <ThemedView style={styles.headerContent}>
+                  <Text style={[styles.logo, { color: palette.primary }]}>
+                    Join Gather
+                  </Text>
+                  <ThemedText
+                    style={[styles.subtitle, { color: palette.muted }]}
+                  >
+                    Create your account to start discovering events
+                  </ThemedText>
+                </ThemedView>
+              </ThemedView>
+
+              {/* Registration Form */}
+              <ThemedView style={styles.form}>
+                {/* Name Input */}
+                <ThemedView style={styles.inputGroup}>
+                  <ThemedText
+                    style={[styles.label, { color: palette.secondary }]}
+                  >
+                    Full Name
+                  </ThemedText>
+                  <ThemedView
+                    style={[
+                      styles.inputContainer,
+                      {
+                        borderColor: getFieldError("name")
+                          ? "#EF4444"
+                          : palette.muted + "40",
+                        backgroundColor: palette.surface,
+                      },
+                    ]}
+                  >
+                    <Feather
+                      name="user"
+                      size={20}
+                      color={palette.muted}
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      style={[styles.input, { color: palette.primary }]}
+                      value={credentials.name}
+                      onChangeText={(text) => {
+                        setCredentials((prev) => ({ ...prev, name: text }));
+                        if (errors?.field === "name") setErrors(null);
+                      }}
+                      placeholder="Enter your full name"
+                      placeholderTextColor={palette.muted}
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      editable={!isLoading}
+                    />
+                  </ThemedView>
+                  {getFieldError("name") && (
+                    <ThemedText style={styles.errorText}>
+                      {getFieldError("name")}
+                    </ThemedText>
+                  )}
+                </ThemedView>
+
+                {/* Email Input */}
+                <ThemedView style={styles.inputGroup}>
+                  <ThemedText
+                    style={[styles.label, { color: palette.secondary }]}
+                  >
+                    Email Address
+                  </ThemedText>
+                  <ThemedView
+                    style={[
+                      styles.inputContainer,
+                      {
+                        borderColor: getFieldError("email")
+                          ? "#EF4444"
+                          : palette.muted + "40",
+                        backgroundColor: palette.surface,
+                      },
+                    ]}
+                  >
+                    <Feather
+                      name="mail"
+                      size={20}
+                      color={palette.muted}
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      style={[styles.input, { color: palette.primary }]}
+                      value={credentials.email}
+                      onChangeText={(text) => {
+                        setCredentials((prev) => ({ ...prev, email: text }));
+                        if (errors?.field === "email") setErrors(null);
+                      }}
+                      placeholder="Enter your email"
+                      placeholderTextColor={palette.muted}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!isLoading}
+                    />
+                  </ThemedView>
+                  {getFieldError("email") && (
+                    <ThemedText style={styles.errorText}>
+                      {getFieldError("email")}
+                    </ThemedText>
+                  )}
+                </ThemedView>
+
+                {/* Phone Input */}
+                <ThemedView style={styles.inputGroup}>
+                  <ThemedText
+                    style={[styles.label, { color: palette.secondary }]}
+                  >
+                    Phone Number
+                  </ThemedText>
+                  <ThemedView
+                    style={[
+                      styles.inputContainer,
+                      {
+                        borderColor: getFieldError("phone")
+                          ? "#EF4444"
+                          : palette.muted + "40",
+                        backgroundColor: palette.surface,
+                      },
+                    ]}
+                  >
+                    {/* Country Selector */}
+                    <TouchableOpacity
+                      onPress={openCountryPicker}
+                      style={[
+                        styles.countrySelector,
+                        { borderRightColor: palette.muted + "40" },
+                      ]}
+                      disabled={isLoading}
+                    >
+                      <Text style={styles.flag}>{selectedCountry.flag}</Text>
+                      <Text
+                        style={[
+                          styles.callingCodeText,
+                          { color: palette.primary },
+                        ]}
+                      >
+                        {selectedCountry.callingCode}
+                      </Text>
+                      <Feather
+                        name="chevron-down"
+                        size={16}
+                        color={palette.muted}
+                        style={{ marginLeft: 4 }}
+                      />
+                    </TouchableOpacity>
+
+                    {/* Phone Number Input */}
+                    <TextInput
+                      style={[styles.input, { color: palette.primary }]}
+                      value={credentials.phone}
+                      onChangeText={(text) => {
+                        setCredentials((prev) => ({ ...prev, phone: text }));
+                        if (errors?.field === "phone") setErrors(null);
+                      }}
+                      placeholder="123456789"
+                      placeholderTextColor={palette.muted}
+                      keyboardType="phone-pad"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!isLoading}
+                    />
+                  </ThemedView>
+                  {getFieldError("phone") && (
+                    <ThemedText style={styles.errorText}>
+                      {getFieldError("phone")}
+                    </ThemedText>
+                  )}
+                </ThemedView>
+
+                {/* Password Input */}
+                <ThemedView style={styles.inputGroup}>
+                  <ThemedText
+                    style={[styles.label, { color: palette.secondary }]}
+                  >
+                    Password
+                  </ThemedText>
+                  <ThemedView
+                    style={[
+                      styles.inputContainer,
+                      {
+                        borderColor: getFieldError("password")
+                          ? "#EF4444"
+                          : palette.muted + "40",
+                        backgroundColor: palette.surface,
+                      },
+                    ]}
+                  >
+                    <Feather
+                      name="lock"
+                      size={20}
+                      color={palette.muted}
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      style={[styles.input, { color: palette.primary }]}
+                      value={credentials.password}
+                      onChangeText={(text) => {
+                        setCredentials((prev) => ({ ...prev, password: text }));
+                        if (errors?.field === "password") setErrors(null);
+                      }}
+                      placeholder="Create a strong password"
+                      placeholderTextColor={palette.muted}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!isLoading}
+                    />
+                    <Pressable
+                      onPress={() => setShowPassword(!showPassword)}
+                      style={styles.passwordToggle}
+                      disabled={isLoading}
+                    >
+                      <Feather
+                        name={showPassword ? "eye-off" : "eye"}
+                        size={20}
+                        color={palette.muted}
+                      />
+                    </Pressable>
+                  </ThemedView>
+                  {getFieldError("password") && (
+                    <ThemedText style={styles.errorText}>
+                      {getFieldError("password")}
+                    </ThemedText>
+                  )}
+                </ThemedView>
+
+                {/* Confirm Password Input */}
+                <ThemedView style={styles.inputGroup}>
+                  <ThemedText
+                    style={[styles.label, { color: palette.secondary }]}
+                  >
+                    Confirm Password
+                  </ThemedText>
+                  <ThemedView
+                    style={[
+                      styles.inputContainer,
+                      {
+                        borderColor: getFieldError("confirmPassword")
+                          ? "#EF4444"
+                          : palette.muted + "40",
+                        backgroundColor: palette.surface,
+                      },
+                    ]}
+                  >
+                    <Feather
+                      name="lock"
+                      size={20}
+                      color={palette.muted}
+                      style={styles.inputIcon}
+                    />
+                    <TextInput
+                      style={[styles.input, { color: palette.primary }]}
+                      value={credentials.confirmPassword}
+                      onChangeText={(text) => {
+                        setCredentials((prev) => ({
+                          ...prev,
+                          confirmPassword: text,
+                        }));
+                        if (errors?.field === "confirmPassword")
+                          setErrors(null);
+                      }}
+                      placeholder="Confirm your password"
+                      placeholderTextColor={palette.muted}
+                      secureTextEntry={!showConfirmPassword}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!isLoading}
+                    />
+                    <Pressable
+                      onPress={() =>
+                        setShowConfirmPassword(!showConfirmPassword)
+                      }
+                      style={styles.passwordToggle}
+                      disabled={isLoading}
+                    >
+                      <Feather
+                        name={showConfirmPassword ? "eye-off" : "eye"}
+                        size={20}
+                        color={palette.muted}
+                      />
+                    </Pressable>
+                  </ThemedView>
+                  {getFieldError("confirmPassword") && (
+                    <ThemedText style={styles.errorText}>
+                      {getFieldError("confirmPassword")}
+                    </ThemedText>
+                  )}
+                </ThemedView>
+
+                {/* General Error */}
+                {errors && !errors.field && (
+                  <ThemedView style={styles.generalErrorContainer}>
+                    <ThemedText style={styles.errorText}>
+                      {errors.message}
+                    </ThemedText>
+                  </ThemedView>
+                )}
+
+                {/* Password Requirements */}
+                <ThemedView style={styles.passwordRequirements}>
+                  <ThemedText
+                    style={[styles.requirementsTitle, { color: palette.muted }]}
+                  >
+                    Password must contain:
+                  </ThemedText>
+                  <ThemedText
+                    style={[styles.requirementText, { color: palette.muted }]}
+                  >
+                    • At least 6 characters
+                  </ThemedText>
+                  <ThemedText
+                    style={[styles.requirementText, { color: palette.muted }]}
+                  >
+                    • One uppercase and one lowercase letter
+                  </ThemedText>
+                  <ThemedText
+                    style={[styles.requirementText, { color: palette.muted }]}
+                  >
+                    • At least one number
+                  </ThemedText>
+                </ThemedView>
+
+                {/* Register Button */}
                 <Pressable
-                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                  style={styles.passwordToggle}
+                  onPress={handleRegister}
                   disabled={isLoading}
+                  style={({ pressed }) => [
+                    styles.registerButton,
+                    {
+                      backgroundColor: palette.primary,
+                      opacity: isLoading ? 0.7 : pressed ? 0.8 : 1,
+                    },
+                  ]}
                 >
-                  <Feather
-                    name={showConfirmPassword ? "eye-off" : "eye"}
-                    size={20}
-                    color={palette.muted}
-                  />
+                  <Text style={styles.registerButtonText}>
+                    {isLoading ? "Creating Account..." : "Create Account"}
+                  </Text>
                 </Pressable>
               </ThemedView>
-              {getFieldError("confirmPassword") && (
-                <ThemedText style={styles.errorText}>
-                  {getFieldError("confirmPassword")}
-                </ThemedText>
-              )}
-            </ThemedView>
 
-            {/* General Error */}
-            {errors && !errors.field && (
-              <ThemedView style={styles.generalErrorContainer}>
-                <ThemedText style={styles.errorText}>
-                  {errors.message}
+              {/* Login Link */}
+              <ThemedView style={styles.footer}>
+                <ThemedText
+                  style={[styles.footerText, { color: palette.muted }]}
+                >
+                  Already have an account?{" "}
                 </ThemedText>
+                <Pressable onPress={navigateToLogin} disabled={isLoading}>
+                  <ThemedText
+                    style={[styles.loginLink, { color: palette.accent }]}
+                  >
+                    Sign In
+                  </ThemedText>
+                </Pressable>
               </ThemedView>
-            )}
+            </ScrollView>
+          </KeyboardAvoidingView>
 
-            {/* Password Requirements */}
-            <ThemedView style={styles.passwordRequirements}>
-              <ThemedText
-                style={[styles.requirementsTitle, { color: palette.muted }]}
-              >
-                Password must contain:
-              </ThemedText>
-              <ThemedText
-                style={[styles.requirementText, { color: palette.muted }]}
-              >
-                • At least 6 characters
-              </ThemedText>
-              <ThemedText
-                style={[styles.requirementText, { color: palette.muted }]}
-              >
-                • One uppercase and one lowercase letter
-              </ThemedText>
-              <ThemedText
-                style={[styles.requirementText, { color: palette.muted }]}
-              >
-                • At least one number
-              </ThemedText>
-            </ThemedView>
-
-            {/* Register Button */}
-            <Pressable
-              onPress={handleRegister}
-              disabled={isLoading}
-              style={({ pressed }) => [
-                styles.registerButton,
-                {
-                  backgroundColor: palette.primary,
-                  opacity: isLoading ? 0.7 : pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <Text style={styles.registerButtonText}>
-                {isLoading ? "Creating Account..." : "Create Account"}
-              </Text>
-            </Pressable>
-          </ThemedView>
-
-          {/* Login Link */}
-          <ThemedView style={styles.footer}>
-            <ThemedText style={[styles.footerText, { color: palette.muted }]}>
-              Already have an account?{" "}
-            </ThemedText>
-            <Pressable onPress={navigateToLogin} disabled={isLoading}>
-              <ThemedText style={[styles.loginLink, { color: palette.accent }]}>
-                Sign In
-              </ThemedText>
-            </Pressable>
-          </ThemedView>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          {/* Country Picker Bottom Sheet */}
+          <CountryPickerSheet
+            sheetRef={countryPickerRef}
+            selectedCountry={selectedCountry}
+            onSelectCountry={handleSelectCountry}
+          />
+        </SafeAreaView>
+      </BottomSheetModalProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -598,6 +682,21 @@ const styles = StyleSheet.create({
   },
   inputIcon: {
     marginRight: 12,
+  },
+  countrySelector: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: 12,
+    marginRight: 12,
+    borderRightWidth: 1,
+  },
+  flag: {
+    fontSize: 24,
+    marginRight: 8,
+  },
+  callingCodeText: {
+    fontSize: 16,
+    fontFamily: "Inter-Medium",
   },
   input: {
     flex: 1,
