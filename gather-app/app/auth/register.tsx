@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -8,28 +8,28 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-} from 'react-native';
-import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+} from "react-native";
+import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import type { RegisterCredentials, AuthError } from '@/constants/auth';
-import { signUp as signUpService } from '@/services/auth';
+import { Text as ThemedText, View as ThemedView } from "@/components/Themed";
+import Colors from "@/constants/Colors";
+import { useColorScheme } from "@/components/useColorScheme";
+import type { RegisterCredentials, AuthError } from "@/constants/auth";
+import { signUp as signUpService } from "@/services/auth";
 
 export default function RegisterScreen() {
   const router = useRouter();
-  const colorScheme = useColorScheme() ?? 'light';
+  const colorScheme = useColorScheme() ?? "light";
   const palette = Colors[colorScheme];
 
   const [credentials, setCredentials] = useState<RegisterCredentials>({
-    name: '',
-    email: '',
-    phone: '',
-    password: '',
-    confirmPassword: '',
+    name: "",
+    email: "",
+    phone: "",
+    password: "",
+    confirmPassword: "",
   });
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -39,66 +39,85 @@ export default function RegisterScreen() {
   const validateForm = (): boolean => {
     // Name validation
     if (!credentials.name.trim()) {
-      setErrors({ message: 'Full name is required', field: 'name' });
+      setErrors({ message: "Full name is required", field: "name" });
       return false;
     }
 
     if (credentials.name.trim().length < 2) {
-      setErrors({ message: 'Name must be at least 2 characters', field: 'name' });
+      setErrors({
+        message: "Name must be at least 2 characters",
+        field: "name",
+      });
       return false;
     }
 
     // Email validation
     if (!credentials.email.trim()) {
-      setErrors({ message: 'Email is required', field: 'email' });
+      setErrors({ message: "Email is required", field: "email" });
       return false;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(credentials.email)) {
-      setErrors({ message: 'Please enter a valid email address', field: 'email' });
+      setErrors({
+        message: "Please enter a valid email address",
+        field: "email",
+      });
       return false;
     }
 
     // Phone validation
     if (!credentials.phone.trim()) {
-      setErrors({ message: 'Phone number is required', field: 'phone' });
+      setErrors({ message: "Phone number is required", field: "phone" });
       return false;
     }
 
     const phoneRegex = /^\+?[1-9]\d{1,14}$/;
-    if (!phoneRegex.test(credentials.phone.replace(/\s+/g, ''))) {
-      setErrors({ message: 'Please enter a valid phone number with country code', field: 'phone' });
+    if (!phoneRegex.test(credentials.phone.replace(/\s+/g, ""))) {
+      setErrors({
+        message: "Please enter a valid phone number with country code",
+        field: "phone",
+      });
       return false;
     }
 
     // Password validation
     if (!credentials.password.trim()) {
-      setErrors({ message: 'Password is required', field: 'password' });
+      setErrors({ message: "Password is required", field: "password" });
       return false;
     }
 
     if (credentials.password.length < 6) {
-      setErrors({ message: 'Password must be at least 6 characters', field: 'password' });
+      setErrors({
+        message: "Password must be at least 6 characters",
+        field: "password",
+      });
       return false;
     }
 
     if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(credentials.password)) {
-      setErrors({ 
-        message: 'Password must contain at least one uppercase letter, one lowercase letter, and one number',
-        field: 'password'
+      setErrors({
+        message:
+          "Password must contain at least one uppercase letter, one lowercase letter, and one number",
+        field: "password",
       });
       return false;
     }
 
     // Confirm password validation
     if (!credentials.confirmPassword.trim()) {
-      setErrors({ message: 'Please confirm your password', field: 'confirmPassword' });
+      setErrors({
+        message: "Please confirm your password",
+        field: "confirmPassword",
+      });
       return false;
     }
 
     if (credentials.password !== credentials.confirmPassword) {
-      setErrors({ message: 'Passwords do not match', field: 'confirmPassword' });
+      setErrors({
+        message: "Passwords do not match",
+        field: "confirmPassword",
+      });
       return false;
     }
 
@@ -107,7 +126,7 @@ export default function RegisterScreen() {
 
   const handleRegister = async () => {
     setErrors(null);
-    
+
     if (!validateForm()) {
       return;
     }
@@ -118,31 +137,47 @@ export default function RegisterScreen() {
       const result = await signUpService(credentials);
 
       if (!result || !result.needsVerification) {
-        setErrors({ message: 'Unable to create your account right now. Please try again.' });
+        setErrors({
+          message: "Unable to create your account right now. Please try again.",
+        });
         return;
       }
 
       // Navigate to code verification screen with phone number
       router.push({
-        pathname: '/auth/code',
-        params: { 
+        pathname: "/auth/code",
+        params: {
           phone: credentials.phone,
           email: credentials.email,
           name: credentials.name,
-          type: 'signup'
-        }
+          type: "signup",
+        },
       });
     } catch (error) {
-      console.error('Registration error:', error);
+      console.error("Registration error:", error);
 
-      let message = 'An account with this email or phone number already exists. Please try different details.';
+      let message =
+        "An account with this email or phone number already exists. Please try different details.";
+      let field: keyof RegisterCredentials | undefined = undefined;
+
       if (error instanceof Error && error.message) {
         message = error.message;
+
+        // Determine which field caused the error based on the error message
+        if (message.toLowerCase().includes("phone")) {
+          field = "phone";
+        } else if (message.toLowerCase().includes("email")) {
+          field = "email";
+        } else if (message.toLowerCase().includes("password")) {
+          field = "password";
+        } else if (message.toLowerCase().includes("name")) {
+          field = "name";
+        }
       }
 
       setErrors({
         message,
-        field: 'email',
+        field,
       });
     } finally {
       setIsLoading(false);
@@ -158,15 +193,15 @@ export default function RegisterScreen() {
   };
 
   return (
-    <SafeAreaView 
+    <SafeAreaView
       style={[styles.container, { backgroundColor: palette.background }]}
-      edges={['top', 'left', 'right']}
+      edges={["top", "left", "right"]}
     >
       <KeyboardAvoidingView
         style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <ScrollView 
+        <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -177,13 +212,13 @@ export default function RegisterScreen() {
               onPress={navigateToLogin}
               style={({ pressed }) => [
                 styles.backButton,
-                pressed && { backgroundColor: palette.muted + '20' }
+                pressed && { backgroundColor: palette.muted + "20" },
               ]}
               disabled={isLoading}
             >
               <Feather name="arrow-left" size={24} color={palette.secondary} />
             </Pressable>
-            
+
             <ThemedView style={styles.headerContent}>
               <Text style={[styles.logo, { color: palette.primary }]}>
                 Join Gather
@@ -201,27 +236,29 @@ export default function RegisterScreen() {
               <ThemedText style={[styles.label, { color: palette.secondary }]}>
                 Full Name
               </ThemedText>
-              <ThemedView 
+              <ThemedView
                 style={[
                   styles.inputContainer,
-                  { 
-                    borderColor: getFieldError('name') ? '#EF4444' : palette.muted + '40',
-                    backgroundColor: palette.surface 
-                  }
+                  {
+                    borderColor: getFieldError("name")
+                      ? "#EF4444"
+                      : palette.muted + "40",
+                    backgroundColor: palette.surface,
+                  },
                 ]}
               >
-                <Feather 
-                  name="user" 
-                  size={20} 
-                  color={palette.muted} 
+                <Feather
+                  name="user"
+                  size={20}
+                  color={palette.muted}
                   style={styles.inputIcon}
                 />
                 <TextInput
                   style={[styles.input, { color: palette.primary }]}
                   value={credentials.name}
                   onChangeText={(text) => {
-                    setCredentials(prev => ({ ...prev, name: text }));
-                    if (errors?.field === 'name') setErrors(null);
+                    setCredentials((prev) => ({ ...prev, name: text }));
+                    if (errors?.field === "name") setErrors(null);
                   }}
                   placeholder="Enter your full name"
                   placeholderTextColor={palette.muted}
@@ -230,9 +267,9 @@ export default function RegisterScreen() {
                   editable={!isLoading}
                 />
               </ThemedView>
-              {getFieldError('name') && (
+              {getFieldError("name") && (
                 <ThemedText style={styles.errorText}>
-                  {getFieldError('name')}
+                  {getFieldError("name")}
                 </ThemedText>
               )}
             </ThemedView>
@@ -242,27 +279,29 @@ export default function RegisterScreen() {
               <ThemedText style={[styles.label, { color: palette.secondary }]}>
                 Email Address
               </ThemedText>
-              <ThemedView 
+              <ThemedView
                 style={[
                   styles.inputContainer,
-                  { 
-                    borderColor: getFieldError('email') ? '#EF4444' : palette.muted + '40',
-                    backgroundColor: palette.surface 
-                  }
+                  {
+                    borderColor: getFieldError("email")
+                      ? "#EF4444"
+                      : palette.muted + "40",
+                    backgroundColor: palette.surface,
+                  },
                 ]}
               >
-                <Feather 
-                  name="mail" 
-                  size={20} 
-                  color={palette.muted} 
+                <Feather
+                  name="mail"
+                  size={20}
+                  color={palette.muted}
                   style={styles.inputIcon}
                 />
                 <TextInput
                   style={[styles.input, { color: palette.primary }]}
                   value={credentials.email}
                   onChangeText={(text) => {
-                    setCredentials(prev => ({ ...prev, email: text }));
-                    if (errors?.field === 'email') setErrors(null);
+                    setCredentials((prev) => ({ ...prev, email: text }));
+                    if (errors?.field === "email") setErrors(null);
                   }}
                   placeholder="Enter your email"
                   placeholderTextColor={palette.muted}
@@ -272,9 +311,9 @@ export default function RegisterScreen() {
                   editable={!isLoading}
                 />
               </ThemedView>
-              {getFieldError('email') && (
+              {getFieldError("email") && (
                 <ThemedText style={styles.errorText}>
-                  {getFieldError('email')}
+                  {getFieldError("email")}
                 </ThemedText>
               )}
             </ThemedView>
@@ -284,27 +323,29 @@ export default function RegisterScreen() {
               <ThemedText style={[styles.label, { color: palette.secondary }]}>
                 Phone Number
               </ThemedText>
-              <ThemedView 
+              <ThemedView
                 style={[
                   styles.inputContainer,
-                  { 
-                    borderColor: getFieldError('phone') ? '#EF4444' : palette.muted + '40',
-                    backgroundColor: palette.surface 
-                  }
+                  {
+                    borderColor: getFieldError("phone")
+                      ? "#EF4444"
+                      : palette.muted + "40",
+                    backgroundColor: palette.surface,
+                  },
                 ]}
               >
-                <Feather 
-                  name="phone" 
-                  size={20} 
-                  color={palette.muted} 
+                <Feather
+                  name="phone"
+                  size={20}
+                  color={palette.muted}
                   style={styles.inputIcon}
                 />
                 <TextInput
                   style={[styles.input, { color: palette.primary }]}
                   value={credentials.phone}
                   onChangeText={(text) => {
-                    setCredentials(prev => ({ ...prev, phone: text }));
-                    if (errors?.field === 'phone') setErrors(null);
+                    setCredentials((prev) => ({ ...prev, phone: text }));
+                    if (errors?.field === "phone") setErrors(null);
                   }}
                   placeholder="+1234567890"
                   placeholderTextColor={palette.muted}
@@ -314,9 +355,9 @@ export default function RegisterScreen() {
                   editable={!isLoading}
                 />
               </ThemedView>
-              {getFieldError('phone') && (
+              {getFieldError("phone") && (
                 <ThemedText style={styles.errorText}>
-                  {getFieldError('phone')}
+                  {getFieldError("phone")}
                 </ThemedText>
               )}
             </ThemedView>
@@ -326,27 +367,29 @@ export default function RegisterScreen() {
               <ThemedText style={[styles.label, { color: palette.secondary }]}>
                 Password
               </ThemedText>
-              <ThemedView 
+              <ThemedView
                 style={[
                   styles.inputContainer,
-                  { 
-                    borderColor: getFieldError('password') ? '#EF4444' : palette.muted + '40',
-                    backgroundColor: palette.surface 
-                  }
+                  {
+                    borderColor: getFieldError("password")
+                      ? "#EF4444"
+                      : palette.muted + "40",
+                    backgroundColor: palette.surface,
+                  },
                 ]}
               >
-                <Feather 
-                  name="lock" 
-                  size={20} 
-                  color={palette.muted} 
+                <Feather
+                  name="lock"
+                  size={20}
+                  color={palette.muted}
                   style={styles.inputIcon}
                 />
                 <TextInput
                   style={[styles.input, { color: palette.primary }]}
                   value={credentials.password}
                   onChangeText={(text) => {
-                    setCredentials(prev => ({ ...prev, password: text }));
-                    if (errors?.field === 'password') setErrors(null);
+                    setCredentials((prev) => ({ ...prev, password: text }));
+                    if (errors?.field === "password") setErrors(null);
                   }}
                   placeholder="Create a strong password"
                   placeholderTextColor={palette.muted}
@@ -360,16 +403,16 @@ export default function RegisterScreen() {
                   style={styles.passwordToggle}
                   disabled={isLoading}
                 >
-                  <Feather 
-                    name={showPassword ? 'eye-off' : 'eye'} 
-                    size={20} 
-                    color={palette.muted} 
+                  <Feather
+                    name={showPassword ? "eye-off" : "eye"}
+                    size={20}
+                    color={palette.muted}
                   />
                 </Pressable>
               </ThemedView>
-              {getFieldError('password') && (
+              {getFieldError("password") && (
                 <ThemedText style={styles.errorText}>
-                  {getFieldError('password')}
+                  {getFieldError("password")}
                 </ThemedText>
               )}
             </ThemedView>
@@ -379,27 +422,32 @@ export default function RegisterScreen() {
               <ThemedText style={[styles.label, { color: palette.secondary }]}>
                 Confirm Password
               </ThemedText>
-              <ThemedView 
+              <ThemedView
                 style={[
                   styles.inputContainer,
-                  { 
-                    borderColor: getFieldError('confirmPassword') ? '#EF4444' : palette.muted + '40',
-                    backgroundColor: palette.surface 
-                  }
+                  {
+                    borderColor: getFieldError("confirmPassword")
+                      ? "#EF4444"
+                      : palette.muted + "40",
+                    backgroundColor: palette.surface,
+                  },
                 ]}
               >
-                <Feather 
-                  name="lock" 
-                  size={20} 
-                  color={palette.muted} 
+                <Feather
+                  name="lock"
+                  size={20}
+                  color={palette.muted}
                   style={styles.inputIcon}
                 />
                 <TextInput
                   style={[styles.input, { color: palette.primary }]}
                   value={credentials.confirmPassword}
                   onChangeText={(text) => {
-                    setCredentials(prev => ({ ...prev, confirmPassword: text }));
-                    if (errors?.field === 'confirmPassword') setErrors(null);
+                    setCredentials((prev) => ({
+                      ...prev,
+                      confirmPassword: text,
+                    }));
+                    if (errors?.field === "confirmPassword") setErrors(null);
                   }}
                   placeholder="Confirm your password"
                   placeholderTextColor={palette.muted}
@@ -413,16 +461,16 @@ export default function RegisterScreen() {
                   style={styles.passwordToggle}
                   disabled={isLoading}
                 >
-                  <Feather 
-                    name={showConfirmPassword ? 'eye-off' : 'eye'} 
-                    size={20} 
-                    color={palette.muted} 
+                  <Feather
+                    name={showConfirmPassword ? "eye-off" : "eye"}
+                    size={20}
+                    color={palette.muted}
                   />
                 </Pressable>
               </ThemedView>
-              {getFieldError('confirmPassword') && (
+              {getFieldError("confirmPassword") && (
                 <ThemedText style={styles.errorText}>
-                  {getFieldError('confirmPassword')}
+                  {getFieldError("confirmPassword")}
                 </ThemedText>
               )}
             </ThemedView>
@@ -438,16 +486,24 @@ export default function RegisterScreen() {
 
             {/* Password Requirements */}
             <ThemedView style={styles.passwordRequirements}>
-              <ThemedText style={[styles.requirementsTitle, { color: palette.muted }]}>
+              <ThemedText
+                style={[styles.requirementsTitle, { color: palette.muted }]}
+              >
                 Password must contain:
               </ThemedText>
-              <ThemedText style={[styles.requirementText, { color: palette.muted }]}>
+              <ThemedText
+                style={[styles.requirementText, { color: palette.muted }]}
+              >
                 • At least 6 characters
               </ThemedText>
-              <ThemedText style={[styles.requirementText, { color: palette.muted }]}>
+              <ThemedText
+                style={[styles.requirementText, { color: palette.muted }]}
+              >
                 • One uppercase and one lowercase letter
               </ThemedText>
-              <ThemedText style={[styles.requirementText, { color: palette.muted }]}>
+              <ThemedText
+                style={[styles.requirementText, { color: palette.muted }]}
+              >
                 • At least one number
               </ThemedText>
             </ThemedView>
@@ -458,14 +514,14 @@ export default function RegisterScreen() {
               disabled={isLoading}
               style={({ pressed }) => [
                 styles.registerButton,
-                { 
+                {
                   backgroundColor: palette.primary,
-                  opacity: isLoading ? 0.7 : pressed ? 0.8 : 1
-                }
+                  opacity: isLoading ? 0.7 : pressed ? 0.8 : 1,
+                },
               ]}
             >
               <Text style={styles.registerButtonText}>
-                {isLoading ? 'Creating Account...' : 'Create Account'}
+                {isLoading ? "Creating Account..." : "Create Account"}
               </Text>
             </Pressable>
           </ThemedView>
@@ -473,12 +529,9 @@ export default function RegisterScreen() {
           {/* Login Link */}
           <ThemedView style={styles.footer}>
             <ThemedText style={[styles.footerText, { color: palette.muted }]}>
-              Already have an account?{' '}
+              Already have an account?{" "}
             </ThemedText>
-            <Pressable 
-              onPress={navigateToLogin}
-              disabled={isLoading}
-            >
+            <Pressable onPress={navigateToLogin} disabled={isLoading}>
               <ThemedText style={[styles.loginLink, { color: palette.accent }]}>
                 Sign In
               </ThemedText>
@@ -506,23 +559,23 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   backButton: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     padding: 8,
     borderRadius: 8,
     marginBottom: 24,
   },
   headerContent: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   logo: {
     fontSize: 32,
-    fontFamily: 'Poppins-SemiBold',
+    fontFamily: "Poppins-SemiBold",
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    fontFamily: 'Inter-Regular',
-    textAlign: 'center',
+    fontFamily: "Inter-Regular",
+    textAlign: "center",
   },
   form: {
     marginBottom: 32,
@@ -532,12 +585,12 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    fontFamily: 'Inter-Medium',
+    fontFamily: "Inter-Medium",
     marginBottom: 8,
   },
   inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
@@ -549,48 +602,48 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
-    fontFamily: 'Inter-Regular',
+    fontFamily: "Inter-Regular",
   },
   passwordToggle: {
     padding: 4,
   },
   errorText: {
     fontSize: 12,
-    fontFamily: 'Inter-Regular',
-    color: '#EF4444',
+    fontFamily: "Inter-Regular",
+    color: "#EF4444",
     marginTop: 4,
   },
   generalErrorContainer: {
-    backgroundColor: '#FEF2F2',
+    backgroundColor: "#FEF2F2",
     borderWidth: 1,
-    borderColor: '#FECACA',
+    borderColor: "#FECACA",
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
   },
   passwordRequirements: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: "#F8FAFC",
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: "#E2E8F0",
     borderRadius: 8,
     padding: 12,
     marginBottom: 24,
   },
   requirementsTitle: {
     fontSize: 12,
-    fontFamily: 'Inter-SemiBold',
+    fontFamily: "Inter-SemiBold",
     marginBottom: 4,
   },
   requirementText: {
     fontSize: 11,
-    fontFamily: 'Inter-Regular',
+    fontFamily: "Inter-Regular",
     lineHeight: 16,
   },
   registerButton: {
     borderRadius: 12,
     paddingVertical: 16,
-    alignItems: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOpacity: 0.1,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
@@ -598,20 +651,20 @@ const styles = StyleSheet.create({
   },
   registerButtonText: {
     fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
-    color: '#FFFFFF',
+    fontFamily: "Inter-SemiBold",
+    color: "#FFFFFF",
   },
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
   },
   footerText: {
     fontSize: 14,
-    fontFamily: 'Inter-Regular',
+    fontFamily: "Inter-Regular",
   },
   loginLink: {
     fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
+    fontFamily: "Inter-SemiBold",
   },
 });
