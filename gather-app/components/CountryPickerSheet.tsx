@@ -60,6 +60,12 @@ export const GCC_COUNTRIES: Country[] = [
     callingCode: "+971",
     flag: "🇦🇪",
   },
+  {
+    name: "United States of America",
+    code: "US",
+    callingCode: "+1",
+    flag: "🇺🇸",
+  },
 ];
 
 interface CountryPickerSheetProps {
